@@ -6,6 +6,18 @@ from quats import quat_mul
 from collect_stance import valid_pose, knees_valid, knees_continuous
 
 
+def calibrate_stop_ground(reference, parents, names, floor_z=0.0):
+    points = foot_points(reference, parents, names)
+    return dict(floor_z=float(floor_z), offsets={
+        side: {part: float(point[2] - floor_z) for part, point in feet.items()}
+        for side, feet in points.items()})
+
+
+def contact_points(points, ground):
+    return {side: {part: point - np.array([0, 0, ground['offsets'][side][part]])
+                   for part, point in feet.items()} for side, feet in points.items()}
+
+
 def stop_support(pose, goal, parents, names):
     """低い足を支持足とし、同じ高さなら進行方向の後足を選ぶ。"""
     points = foot_points(pose, parents, names)
@@ -39,7 +51,7 @@ def validate_stop_progress(frames, original, destination, support, parents, name
     return ''
 
 
-def build_stop_target(original, goal, parents, names):
+def build_stop_target(original, goal, parents, names, ground):
     raw = overlay_pose('F001', names, original)
     if raw is None:
         return None
@@ -49,10 +61,8 @@ def build_stop_target(original, goal, parents, names):
     angle = np.arctan2(facing[1], facing[0]) - np.arctan2(source_facing[1], source_facing[0])
     target[0, 3:] = quat_mul(np.array([0, 0, np.sin(angle/2), np.cos(angle/2)]), target[0, 3:])
     target[0, :2] = goal[:2]
-    start = foot_points(original, parents, names)
-    end = foot_points(target, parents, names)
-    ground = min(start[s][p][2] for s in ('left', 'right') for p in ('ankle', 'toe'))
-    target[0, 2] += ground - min(end[s][p][2] for s in ('left', 'right') for p in ('ankle', 'toe'))
+    end = contact_points(foot_points(target, parents, names), ground)
+    target[0, 2] += ground['floor_z'] - min(end[s][p][2] for s in ('left', 'right') for p in ('ankle', 'toe'))
     return target if valid_pose(target) and knees_valid(target, parents, names) else None
 
 
@@ -85,15 +95,28 @@ def check_bone_lengths(frames, original, names, atol_m=.002, rtol=.01):
     return result
 
 
-def validate_stop_motion(frames, original, goal, parents, names):
+def validate_stop_motion(frames, original, goal, parents, names, ground):
     frames = np.asarray(frames)
     result = dict(accepted=False, reason='Invalid stop motion')
     if len(frames) < 4 or frames.shape[1:] != original.shape or not all(valid_pose(p) for p in frames):
         return result
     result.update(check_bone_lengths(frames, original, names))
-    points = [foot_points(p, parents, names) for p in frames]
-    start = foot_points(original, parents, names)
-    ground = min(start[s][p][2] for s in ('left', 'right') for p in ('ankle', 'toe'))
+    calibration = ground
+    raw_points = [foot_points(p, parents, names) for p in frames]
+    points = [contact_points(p, calibration) for p in raw_points]
+    start = contact_points(foot_points(original, parents, names), calibration)
+    ground = calibration['floor_z']
+    result['ground_world_z'] = ground
+    penetration = next(((i, side, part) for i, p in enumerate(points)
+                        for side in ('left', 'right') for part in ('ankle', 'toe')
+                        if p[side][part][2] < ground - .02), None)
+    if penetration is not None:
+        i, side, part = penetration
+        result.update(penetration_frame=i, penetration_side=side, penetration_part=part,
+                      foot_world_z=float(raw_points[i][side][part][2]),
+                      contact_offset_m=calibration['offsets'][side][part],
+                      penetration_depth_m=float(ground - points[i][side][part][2]),
+                      root_height_m=float(frames[i, 0, 2]))
     error = float(np.linalg.norm(frames[-1, 0, :2] - goal[:2]))
     result['arrival_error_m'] = error
     if error > .08:
@@ -104,7 +127,7 @@ def validate_stop_motion(frames, original, goal, parents, names):
         result['reason'] = 'Invalid stop knee bend'
     elif not result['bone_lengths_valid']:
         result['reason'] = 'Stop bone lengths changed'
-    elif any(p[s][part][2] < ground-.02 for p in points for s in ('left', 'right') for part in ('ankle', 'toe')):
+    elif penetration is not None:
         result['reason'] = 'Stop foot penetrated ground'
     elif any(np.linalg.norm(b[s][part][:2]-a[s][part][:2]) > .02
              for a,b in zip([start,*points[:-1]],points) for s in ('left','right') for part in ('ankle','toe')

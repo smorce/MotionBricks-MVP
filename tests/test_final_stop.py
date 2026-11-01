@@ -5,10 +5,37 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 from test_gait import standing_pose, observe
 from locomotion_cycle import LocomotionCycle, FINAL_STEP, SETTLED
-from final_stop import build_stop_target, validate_stop_motion, validate_stop_progress, check_bone_lengths
+from final_stop import build_stop_target, validate_stop_motion, validate_stop_progress, check_bone_lengths, calibrate_stop_ground
 
 
 class FinalStopTests(unittest.TestCase):
+    def test_airborne_start_uses_fixed_ground(self):
+        rest, parents, names = standing_pose()
+        ground = calibrate_stop_ground(rest, parents, names, floor_z=.1)
+        airborne = rest.copy()
+        airborne[0, 2] += .04
+        frames = np.repeat(rest[None], 4, axis=0)
+        metrics = validate_stop_motion(frames, airborne, [0, 0], parents, names, ground)
+        self.assertTrue(metrics['accepted'], metrics)
+        with patch('final_stop.overlay_pose', return_value=rest.copy()):
+            target = build_stop_target(airborne, [0, 0], parents, names, ground)
+        self.assertAlmostEqual(target[0, 2], rest[0, 2])
+
+    def test_penetration_details(self):
+        rest, parents, names = standing_pose()
+        ground = calibrate_stop_ground(rest, parents, names, floor_z=.1)
+        frames = np.repeat(rest[None], 4, axis=0)
+        frames[1:, 0, 2] -= .028
+        metrics = validate_stop_motion(frames, rest, [0, 0], parents, names, ground)
+        self.assertEqual(metrics['reason'], 'Stop foot penetrated ground')
+        self.assertEqual(metrics['penetration_frame'], 1)
+        self.assertEqual(metrics['penetration_side'], 'left')
+        self.assertEqual(metrics['penetration_part'], 'ankle')
+        self.assertAlmostEqual(metrics['ground_world_z'], .1)
+        self.assertAlmostEqual(metrics['penetration_depth_m'], .028)
+        self.assertAlmostEqual(metrics['root_height_m'], rest[0, 2] - .028)
+        self.assertAlmostEqual(metrics['foot_world_z'], .242)
+
     def test_bone_tolerance_combines_absolute_and_relative_error(self):
         pose, _, names = standing_pose()
         joint = names.index('LeftShin')
@@ -25,7 +52,7 @@ class FinalStopTests(unittest.TestCase):
         frames = np.repeat(pose[None], 4, axis=0)
         joint = names.index('LeftToeBase')
         frames[:, joint, :3] = [.079, np.sqrt(.08**2 - .079**2), -.02]
-        metrics = validate_stop_motion(frames, pose, [0, 0], parents, names)
+        metrics = validate_stop_motion(frames, pose, [0, 0], parents, names, calibrate_stop_ground(pose, parents, names))
         self.assertTrue(metrics['accepted'], metrics)
         self.assertAlmostEqual(metrics['max_bone_length_error_m'], 0)
         self.assertGreater(metrics['bone_length_diagnostics'][joint - 1]['local_position_delta_m'], .01)
@@ -36,7 +63,7 @@ class FinalStopTests(unittest.TestCase):
         frames = np.repeat(pose[None], 4, axis=0)
         joint = names.index('LeftToeBase')
         frames[2, joint, 0] += .03
-        metrics = validate_stop_motion(frames, pose, [0, 0], parents, names)
+        metrics = validate_stop_motion(frames, pose, [0, 0], parents, names, calibrate_stop_ground(pose, parents, names))
         self.assertEqual(metrics['reason'], 'Stop bone lengths changed')
         self.assertEqual(metrics['failed_joint'], 'LeftToeBase')
         self.assertEqual(metrics['failed_frame'], 2)
@@ -121,7 +148,7 @@ class FinalStopTests(unittest.TestCase):
     def test_target_places_root_at_goal_without_changing_bone_lengths(self):
         pose, parents, names = standing_pose()
         with patch('final_stop.overlay_pose', return_value=pose.copy()):
-            target = build_stop_target(pose, [0.2, 0], parents, names)
+            target = build_stop_target(pose, [0.2, 0], parents, names, calibrate_stop_ground(pose, parents, names))
         np.testing.assert_allclose(target[0, :2], [.2, 0])
         np.testing.assert_array_equal(target[1:, :3], pose[1:, :3])
 
@@ -152,7 +179,7 @@ class FinalStopTests(unittest.TestCase):
     def test_no_endpoint_snap_or_unstable_feet(self):
         pose, parents, names = standing_pose()
         frames = np.repeat(pose[None], 8, axis=0)
-        result = validate_stop_motion(frames, pose, [.4, 0], parents, names)
+        result = validate_stop_motion(frames, pose, [.4, 0], parents, names, calibrate_stop_ground(pose, parents, names))
         self.assertFalse(result['accepted'])
 
     def test_official_generation_keeps_history_until_generation_and_restores_pose(self):
@@ -171,7 +198,7 @@ class FinalStopTests(unittest.TestCase):
               'TargetPoseInferenceParams': lambda **kwargs: kwargs}
         wp = SimpleNamespace(array=lambda data, **kwargs: data, transform=object)
         with patch('engine.build_stop_target', return_value=pose), patch('engine._sync_pose', side_effect=lambda *args,**kwargs: events.append('restore')), patch('engine.validate_stop_motion', return_value={'accepted': True}):
-            frames, metrics = _begin_final_stop(character, pose, [0,0], rt, wp)
+            frames, metrics = _begin_final_stop(character, pose, [0,0], rt, wp, ground=calibrate_stop_ground(pose, parents, names))
         self.assertEqual(events, ['generate', 'restore'])
         self.assertTrue(metrics['accepted'])
         self.assertEqual(len(frames), 1)
@@ -188,6 +215,6 @@ class FinalStopTests(unittest.TestCase):
         wp=SimpleNamespace(array=lambda data,**kwargs:data,transform=object)
         with patch('engine.build_stop_target',return_value=pose), patch('engine._sync_pose') as restore:
             with self.assertRaisesRegex(RuntimeError,'Inference failed'):
-                _begin_final_stop(character,pose,[0,0],rt,wp)
+                _begin_final_stop(character,pose,[0,0],rt,wp, ground=calibrate_stop_ground(pose, parents, names))
             restore.assert_called_once()
         character.clear_ik_pins.assert_called_once()

@@ -918,8 +918,8 @@ function animate(){
         const toe=vrm.humanoid.getRawBoneNode(`${side}Toes`);
         if(foot && toe) sample[side]={foot:foot.getWorldPosition(new THREE.Vector3()).toArray(),toe:toe.getWorldPosition(new THREE.Vector3()).toArray()};
       }
-      gait.foot_height_diagnostics=sample.left && sample.right
-        ? compareFootHeights(gait.feet, sample, rig.rest[0][2], FLOOR_TOP) : null;
+      gait.foot_height_diagnostics=sample.left && sample.right && rig.stop_ground
+        ? compareFootHeights(gait.feet, sample, rig.stop_ground.floor_z, FLOOR_TOP) : null;
     }
   }
   if(place) place.tick(clock.elapsedTime);

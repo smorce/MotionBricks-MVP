@@ -25,7 +25,7 @@ from quats import RX90, quat_mul, quat_to_mat
 from soma_pose import overlay_pose
 from collect_stance import build_collect_target, build_collect_lift, build_weight_target, valid_weight_shift, validate_motion
 from step_cycle import choose_swing, foot_points
-from final_stop import build_stop_target, validate_stop_motion, stop_support, validate_stop_progress
+from final_stop import build_stop_target, validate_stop_motion, stop_support, validate_stop_progress, calibrate_stop_ground
 from stop_phase import NavState, apply_nav_command
 
 UPDATE_HZ = 60.0
@@ -246,11 +246,11 @@ def _begin_collect(character, planted, swing, rt, wp, facing, cancelled=None):
     return (frames if metrics['accepted'] else None), metrics
 
 
-def _begin_final_stop(character, pose, goal, rt, wp, destination=None):
+def _begin_final_stop(character, pose, goal, rt, wp, destination=None, *, ground):
     """歩行履歴から公式生成し、表示する前に停止区間全体を検証する。"""
     names = list(character.skeleton.joint_names)
     parents = [character.skeleton.joint_parent(i) for i in range(len(names))]
-    target_pose = build_stop_target(pose, goal, parents, names)
+    target_pose = build_stop_target(pose, goal, parents, names, ground)
     if target_pose is None:
         return None, dict(accepted=False, stage='target', reason='No safe final stop target')
     support = stop_support(pose, goal, parents, names)
@@ -271,7 +271,7 @@ def _begin_final_stop(character, pose, goal, rt, wp, destination=None):
                 break
         else:
             return None, dict(accepted=False, stage='generation', reason='Final stop generation timed out')
-        metrics = validate_stop_motion(frames, pose, goal, parents, names)
+        metrics = validate_stop_motion(frames, pose, goal, parents, names, ground)
         metrics.update(stage='validation', support=support, ik_pin_mask=int(mask))
         if metrics['accepted']:
             reason = validate_stop_progress(frames, pose, goal if destination is None else destination, support, parents, names)
@@ -361,12 +361,14 @@ def worker(commands: Queue, publish):
         rest[0, 3:] = quat_mul(RX90, rest[0, 3:])
         parents = [skeleton.joint_parent(i) for i in range(skeleton.num_joints)]
         names = list(skeleton.joint_names)
+        stop_ground = calibrate_stop_ground(rest, parents, names)
         publish(
             {
                 "type": "rig",
                 "joint_names": names,
                 "parents": parents,
                 "rest": rest.tolist(),
+                "stop_ground": stop_ground,
                 "stream_hz": UPDATE_HZ,
             }
         )
@@ -441,7 +443,7 @@ def worker(commands: Queue, publish):
             )
             if action.begin_final_stop:
                 try:
-                    stop_frames, stop_metrics = _begin_final_stop(character, action.pose, cycle.final_stop_goal, rt, wp, destination=cycle.goal)
+                    stop_frames, stop_metrics = _begin_final_stop(character, action.pose, cycle.final_stop_goal, rt, wp, destination=cycle.goal, ground=stop_ground)
                 except Exception as exc:
                     _sync_pose(character, pose, wp, seed=True)
                     stop_frames, stop_metrics = None, dict(accepted=False, stage='generation', reason=f'Final stop generation failed: {exc}')
