@@ -1,0 +1,778 @@
+import * as THREE from 'three';
+import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
+import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
+import {VRMLoaderPlugin, VRMUtils} from '@pixiv/three-vrm';
+import {threePointToRuntime} from './coords.js';
+import {abductUpperArms, adductUpperLegs, pointFeetForward, stanceData} from './stance.js';
+import {IdleHandoff} from './idleHandoff.js';
+import idleMotionUrl from '../../motions/idle.vrma?url';
+import idleBreakMotionUrl from '../../motions/idle_06.vrma?url';
+import {buildKit} from '../../ModernRestaurantCafekit/kit.mjs';
+import {stage} from '../../ModernRestaurantCafekit/stage.mjs';
+import cafeFolderUrl from '../../ModernRestaurantCafekit/kit.json?url';
+import cafeUsecases from '../../backend/cafe_usecases.json';
+
+const FLOOR_TOP=0.05;
+// false のとき待機 VRMA は再生しない。歩行後の停止は、画面に出ていた姿勢を保つ。
+const USE_VRMA_IDLE=false;
+const IDLE_QUIET_MS=5000;
+const IDLE_FADE_SEC=0.8;
+const IDLE_SPEED_MAX=0.2;
+const USECASE_SNAP_M=1.0;
+const camOffset=new THREE.Vector3(3.6, 2.35, 4.8);
+const lookHeight=1.05;
+const status = document.querySelector('#status');
+const background = document.querySelector('#background');
+const stanceInputs={
+  leg:document.querySelector('#legAdduct'),
+  arm:document.querySelector('#armAbduct'),
+  toe:document.querySelector('#toeForward'),
+}
+const stanceOut={
+  leg:document.querySelector('#legAdductOut'),
+  arm:document.querySelector('#armAbductOut'),
+  toe:document.querySelector('#toeForwardOut'),
+}
+const stanceDataEl=document.querySelector('#stanceData')
+const STANCE_KEY='roze.stanceAdjust'
+
+function currentStance(){
+  return stanceData({
+    legDeg:stanceInputs.leg?.value,
+    armDeg:stanceInputs.arm?.value,
+    toeDeg:stanceInputs.toe?.value,
+  })
+}
+function formatStance(data){
+  return `{"leg_adduct_deg":${data.leg_adduct_deg.toFixed(1)},"arm_abduct_deg":${data.arm_abduct_deg.toFixed(1)},"toe_forward_deg":${data.toe_forward_deg.toFixed(1)}}`
+}
+function renderStanceReadout(){
+  const data=currentStance()
+  if(stanceOut.leg) stanceOut.leg.textContent=`${data.leg_adduct_deg.toFixed(1)}°`
+  if(stanceOut.arm) stanceOut.arm.textContent=`${data.arm_abduct_deg.toFixed(1)}°`
+  if(stanceOut.toe) stanceOut.toe.textContent=`${data.toe_forward_deg.toFixed(1)}°`
+  if(stanceDataEl) stanceDataEl.textContent=formatStance(data)
+}
+function rememberStance(){
+  try{ localStorage.setItem(STANCE_KEY, JSON.stringify(currentStance())) }catch{ /* private mode */ }
+}
+function restoreStance(){
+  let saved={}
+  try{
+    const raw=localStorage.getItem(STANCE_KEY)
+    if(raw) saved=JSON.parse(raw)
+    else{
+      const legacy=localStorage.getItem('roze.legAdductDeg')
+      if(legacy!=null) saved={leg_adduct_deg:Number(legacy)}
+    }
+  }catch{ saved={} }
+  const data=stanceData({
+    legDeg:saved.leg_adduct_deg,
+    armDeg:saved.arm_abduct_deg,
+    toeDeg:saved.toe_forward_deg,
+  })
+  if(stanceInputs.leg) stanceInputs.leg.value=String(data.leg_adduct_deg)
+  if(stanceInputs.arm) stanceInputs.arm.value=String(data.arm_abduct_deg)
+  if(stanceInputs.toe) stanceInputs.toe.value=String(data.toe_forward_deg)
+}
+restoreStance()
+renderStanceReadout()
+for(const input of Object.values(stanceInputs)){
+  input?.addEventListener('input', ()=>{
+    rememberStance()
+    renderStanceReadout()
+  })
+}
+document.querySelector('#stanceCopy')?.addEventListener('click', async ()=>{
+  const text=stanceDataEl?.textContent??''
+  const button=document.querySelector('#stanceCopy')
+  try{
+    await navigator.clipboard.writeText(text)
+    if(button){
+      button.textContent='コピーしました'
+      setTimeout(()=>{ button.textContent='この数値をコピー' }, 1200)
+    }
+  }catch{
+    if(button) button.textContent='Copy failed'
+  }
+})
+let stanceApplied=false
+function adjustStance(){
+  if(!vrm) return
+  const data=currentStance()
+  const human=vrm.humanoid
+  const leftLeg=human.getNormalizedBoneNode('leftUpperLeg')
+  const rightLeg=human.getNormalizedBoneNode('rightUpperLeg')
+  if(leftLeg&&rightLeg){
+    adductUpperLegs(leftLeg.quaternion, rightLeg.quaternion, THREE.MathUtils.degToRad(data.leg_adduct_deg))
+  }
+  const leftArm=human.getNormalizedBoneNode('leftUpperArm')
+  const rightArm=human.getNormalizedBoneNode('rightUpperArm')
+  if(leftArm&&rightArm){
+    abductUpperArms(leftArm.quaternion, rightArm.quaternion, THREE.MathUtils.degToRad(data.arm_abduct_deg))
+  }
+  const leftFoot=human.getNormalizedBoneNode('leftFoot')
+  const rightFoot=human.getNormalizedBoneNode('rightFoot')
+  if(leftFoot&&rightFoot){
+    pointFeetForward(leftFoot.quaternion, rightFoot.quaternion, THREE.MathUtils.degToRad(data.toe_forward_deg))
+  }
+  stanceApplied=true
+}
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(42, window.innerWidth/window.innerHeight, .1, 150);
+camera.position.set(2.2, 1.7, 3.2);
+camera.lookAt(0, 1.1, 0);
+camera.far = 400;
+camera.updateProjectionMatrix();
+const renderer = new THREE.WebGLRenderer({antialias:true, alpha:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.setSize(window.innerWidth,window.innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.body.insertBefore(renderer.domElement, document.querySelector('#toolbar'));
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.enablePan = true;
+controls.screenSpacePanning = true;
+controls.minDistance = 1.2;
+controls.maxDistance = 36;
+controls.maxPolarAngle = Math.PI * 0.495;
+controls.target.set(0, 1.1, 0);
+// 左ドラッグで回転、右ドラッグで平行移動。短い左クリックは床への移動指示。
+controls.mouseButtons = {
+  LEFT: THREE.MOUSE.ROTATE,
+  MIDDLE: THREE.MOUSE.DOLLY,
+  RIGHT: THREE.MOUSE.PAN,
+};
+controls.touches = {
+  ONE: THREE.TOUCH.ROTATE,
+  TWO: THREE.TOUCH.DOLLY_PAN,
+};
+controls.update();
+renderer.domElement.addEventListener('contextmenu', (e)=>e.preventDefault());
+const fill = new THREE.HemisphereLight(0xffffff, 0x596b7a, 2);
+const sun = new THREE.DirectionalLight(0xffffff, 2.0);
+sun.position.set(-2,6,3);
+scene.add(fill, sun);
+const grid = new THREE.GridHelper(30,30,0x6f8cbb,0x334157);
+scene.add(grid);
+const clickFloor = new THREE.Mesh(new THREE.PlaneGeometry(200,200), new THREE.MeshBasicMaterial({transparent:true,opacity:0,depthWrite:false}));
+clickFloor.rotation.x=-Math.PI/2;
+scene.add(clickFloor);
+const marker = new THREE.Mesh(new THREE.RingGeometry(.12,.17,40), new THREE.MeshBasicMaterial({color:0x34ffab,side:THREE.DoubleSide}));
+marker.rotation.x=-Math.PI/2;
+marker.position.y=FLOOR_TOP+0.02;
+marker.visible=false;
+scene.add(marker);
+const raycaster = new THREE.Raycaster();
+const pointer = new THREE.Vector2();
+let vrm=null;
+let rig=null;
+let currentPose=null;
+let lastPose=null;
+let socket=null;
+let lastDecision='—';
+let lastStage='';
+let currentMotionState='';
+let lastError='';
+let poseStamp=0;
+let renderFrames=0;
+let fps=0;
+let fpsStamp=performance.now();
+let clickAt=0;
+let clickLatency=null;
+let generateMs=null;
+let place=null;
+let look=null;
+let spawn=null;
+let placeNote='カフェを読み込み中';
+let pendingCase='';
+let motionPhase='idle';
+let officialState='';
+let actualSpeed=null;
+let moveRequested=false;
+let sawLocomotion=false;
+let arrivedFromWalk=false;
+let lastInputAt=performance.now();
+let idleClip=null;
+let idleBreakClip=null;
+let handoff=null;
+let handoffClip='';
+let motionToken=0;
+const usecasePicks=[];
+const markerCases=cafeUsecases.filter((item)=>item.marker!==false && Number.isFinite(item.x) && Number.isFinite(item.z));
+const openFloor=cafeUsecases.find((item)=>item.id==='open-floor') ?? {
+  id:'open-floor', title:'空いた床', intent:'カフェの空いた床に着いた。自然に立つ。', hints:['自然に立つ'], marker:false,
+};
+
+// ロゼの VRM 1.0 人体ボーン。Spine2 / Neck1 / Jaw は対応する正規化ボーンが無い。
+const MAP = {
+  Hips:'hips', Spine1:'spine', Chest:'chest',
+  Neck2:'neck', Head:'head', LeftEye:'leftEye', RightEye:'rightEye',
+  LeftShoulder:'leftShoulder', LeftArm:'leftUpperArm', LeftForeArm:'leftLowerArm', LeftHand:'leftHand',
+  LeftHandThumbEnd:'leftThumbDistal', LeftHandMiddleEnd:'leftMiddleDistal',
+  RightShoulder:'rightShoulder', RightArm:'rightUpperArm', RightForeArm:'rightLowerArm', RightHand:'rightHand',
+  RightHandThumbEnd:'rightThumbDistal', RightHandMiddleEnd:'rightMiddleDistal',
+  LeftLeg:'leftUpperLeg', LeftShin:'leftLowerLeg', LeftFoot:'leftFoot', LeftToeBase:'leftToes',
+  RightLeg:'rightUpperLeg', RightShin:'rightLowerLeg', RightFoot:'rightFoot', RightToeBase:'rightToes',
+};
+// World basis conversion: NVIDIA demos Z-up => Three.js Y-up.
+const basis=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,0,0),-Math.PI/2);
+const basisInv=basis.clone().invert();
+const q=(arr)=>new THREE.Quaternion(arr[3],arr[4],arr[5],arr[6]);
+function toThreeWorldQuat(v){return basis.clone().multiply(v).multiply(basisInv)}
+function calcWorldQuats(pose,parents){
+  const out=[];
+  for(let i=0;i<pose.length;i++){
+    const local=q(pose[i]);
+    out.push(parents[i] < 0 ? local : out[parents[i]].clone().multiply(local));
+  }
+  return out;
+}
+let restSourceWorld=[];
+let restDestWorld=new Map();
+function initializeRetarget(){
+  if(!rig||!vrm)return;
+  restSourceWorld=calcWorldQuats(rig.rest,rig.parents);
+  vrm.scene.updateMatrixWorld(true);
+  restDestWorld.clear();
+  for(const bone of new Set(Object.values(MAP))){
+    const node=vrm.humanoid.getNormalizedBoneNode(bone);
+    if(node) restDestWorld.set(bone,node.getWorldQuaternion(new THREE.Quaternion()));
+  }
+  console.log('Normalized VRM bones calibrated (approximate):',restDestWorld.size);
+}
+function lerpPose(a, b, t){
+  if(!a || a.length!==b.length) return b;
+  return b.map((joint,i)=>{
+    const out=joint.slice();
+    for(let k=0;k<3;k++) out[k]=a[i][k]+(joint[k]-a[i][k])*t;
+    const qa=new THREE.Quaternion(a[i][3],a[i][4],a[i][5],a[i][6]);
+    const qb=new THREE.Quaternion(joint[3],joint[4],joint[5],joint[6]);
+    if(qa.dot(qb)<0) qb.set(-qb.x,-qb.y,-qb.z,-qb.w);
+    qa.slerp(qb, t);
+    out[3]=qa.x; out[4]=qa.y; out[5]=qa.z; out[6]=qa.w;
+    return out;
+  });
+}
+function placeRoot(pose){
+  if(!rig||!vrm||!pose?.length) return;
+  const ox=spawn?.x??0, oz=spawn?.z??0;
+  vrm.scene.position.set(pose[0][0]-rig.rest[0][0]+ox, pose[0][2]-rig.rest[0][2]+FLOOR_TOP, -pose[0][1]+rig.rest[0][1]+oz);
+}
+function applyPose(pose){
+  if(!rig||!vrm||!restSourceWorld.length||pose.length!==rig.joint_names.length)return;
+  // Roze's scene origin follows the source hips ground position; don't add hips height twice.
+  placeRoot(pose);
+  vrm.scene.updateMatrixWorld(true);
+  const world=calcWorldQuats(pose,rig.parents);
+  const used=new Set();
+  for(let i=0;i<world.length;i++){
+    const bone=MAP[rig.joint_names[i]];
+    if(!bone||used.has(bone)||!restDestWorld.has(bone))continue;
+    used.add(bone);
+    const node=vrm.humanoid.getNormalizedBoneNode(bone);
+    if(!node)continue;
+    const delta=world[i].clone().multiply(restSourceWorld[i].clone().invert());
+    const desired=toThreeWorldQuat(delta).multiply(restDestWorld.get(bone));
+    const parentWorld=node.parent.getWorldQuaternion(new THREE.Quaternion());
+    node.quaternion.copy(parentWorld.invert().multiply(desired));
+    node.updateMatrixWorld(true);
+  }
+}
+function markInput(){
+  lastInputAt=performance.now();
+}
+function desiredIdleKind(){
+  return performance.now()-lastInputAt>=IDLE_QUIET_MS?'idle_06':'idle';
+}
+function officialIsIdle(){
+  if(!officialState) return motionPhase==='idle'||motionPhase==='pose_done';
+  return /idle/i.test(officialState);
+}
+function standingStill(){
+  if(!USE_VRMA_IDLE||moveRequested) return false;
+  if(motionPhase!=='idle'&&motionPhase!=='pose_done') return false;
+  if(!officialIsIdle()) return false;
+  return Number.isFinite(actualSpeed)&&actualSpeed<=IDLE_SPEED_MAX;
+}
+function stoppedAfterWalk(){
+  if(USE_VRMA_IDLE||moveRequested||!arrivedFromWalk) return false;
+  if(motionPhase!=='idle') return false;
+  if(!officialIsIdle()) return false;
+  return !Number.isFinite(actualSpeed)||actualSpeed<=IDLE_SPEED_MAX;
+}
+function releaseVrmaIdle(){
+  if(handoff){
+    handoff.stop();
+    handoff=null;
+    handoffClip='';
+  }
+  exitBlend=null;
+}
+const HOLD_BONES=['hips','spine','chest','upperChest','neck','head','leftEye','rightEye',
+  'leftUpperLeg','leftLowerLeg','leftFoot','leftToes','rightUpperLeg','rightLowerLeg','rightFoot','rightToes',
+  'leftShoulder','leftUpperArm','leftLowerArm','leftHand','rightShoulder','rightUpperArm','rightLowerArm','rightHand'];
+let heldStop=null;
+function clearHeldStop(){
+  heldStop=null;
+}
+function holdStoppedPose(pose){
+  if(!vrm) return;
+  if(!heldStop){
+    if(!stanceApplied && pose) applyPose(pose);
+    undoStance();
+    heldStop=[];
+    for(const name of HOLD_BONES){
+      const node=vrm.humanoid.getNormalizedBoneNode(name);
+      if(!node) continue;
+      heldStop.push({
+        node,
+        quaternion:node.quaternion.clone(),
+        position:name==='hips'?node.position.clone():null,
+      });
+    }
+  }
+  for(const item of heldStop){
+    item.node.quaternion.copy(item.quaternion);
+    if(item.position) item.node.position.copy(item.position);
+  }
+  placeRoot(pose);
+  adjustStance();
+}
+function captureCharacterPose(){
+  const held=[];
+  vrm.scene.traverse((node)=>{
+    if(!node.quaternion||!node.position) return;
+    held.push({node, quaternion:node.quaternion.clone(), position:node.position.clone()});
+  });
+  return held;
+}
+function restoreCharacterPose(held){
+  for(const item of held){
+    item.node.quaternion.copy(item.quaternion);
+    item.node.position.copy(item.position);
+  }
+}
+function undoStance(){
+  if(!vrm||!stanceApplied) return;
+  const data=currentStance();
+  const human=vrm.humanoid;
+  const leftLeg=human.getNormalizedBoneNode('leftUpperLeg');
+  const rightLeg=human.getNormalizedBoneNode('rightUpperLeg');
+  if(leftLeg&&rightLeg){
+    adductUpperLegs(leftLeg.quaternion, rightLeg.quaternion, -THREE.MathUtils.degToRad(data.leg_adduct_deg));
+  }
+  const leftArm=human.getNormalizedBoneNode('leftUpperArm');
+  const rightArm=human.getNormalizedBoneNode('rightUpperArm');
+  if(leftArm&&rightArm){
+    abductUpperArms(leftArm.quaternion, rightArm.quaternion, -THREE.MathUtils.degToRad(data.arm_abduct_deg));
+  }
+  const leftFoot=human.getNormalizedBoneNode('leftFoot');
+  const rightFoot=human.getNormalizedBoneNode('rightFoot');
+  if(leftFoot&&rightFoot){
+    pointFeetForward(leftFoot.quaternion, rightFoot.quaternion, -THREE.MathUtils.degToRad(data.toe_forward_deg));
+  }
+  stanceApplied=false;
+}
+let exitBlend=null;
+function ease01(t){
+  const x=Math.max(0, Math.min(1, t));
+  return x*x*(3-2*x);
+}
+// 表示中の待機姿勢から MotionBricks の姿勢へ重ねる。その場で再生を切らない。
+function beginExitFromVrma(){
+  if(exitBlend||!handoff?.active||!vrm) return;
+  const displayed=captureCharacterPose();
+  handoff.stop();
+  const released=captureCharacterPose();
+  const restPosition=new Map(released.map((item)=>[item.node, item.position]));
+  restoreCharacterPose(displayed);
+  handoff=null;
+  handoffClip='';
+  exitBlend={
+    nodes:displayed.map((item)=>({
+      node:item.node,
+      quaternion:item.quaternion,
+      position:item.position,
+      restPosition:restPosition.get(item.node)?.clone()||item.position.clone(),
+    })),
+    startedAt:performance.now(),
+  };
+}
+function blendExit(){
+  if(!exitBlend||!vrm) return;
+  const weight=ease01((performance.now()-exitBlend.startedAt)/(IDLE_FADE_SEC*1000));
+  for(const item of exitBlend.nodes){
+    const liveQuaternion=item.node.quaternion.clone();
+    const livePosition=item.node.position.clone();
+    const positionTarget=item.node===vrm.scene?livePosition:item.restPosition;
+    item.node.quaternion.slerpQuaternions(item.quaternion, liveQuaternion, weight);
+    item.node.position.lerpVectors(item.position, positionTarget, weight);
+  }
+  if(weight>=1) exitBlend=null;
+}
+// 画面に出ている姿勢から VRMA へ補間する。スライダー分は控える前に外し、後の adjustStance と二重に掛けない。
+function beginHandoff(which){
+  const clip=which==='idle_06'?idleBreakClip:idleClip;
+  if(!clip||!vrm) return;
+  undoStance();
+  const held=captureCharacterPose();
+  handoff?.stop();
+  restoreCharacterPose(held);
+  handoff=new IdleHandoff(vrm, clip, {
+    fadeSeconds:IDLE_FADE_SEC,
+    preserveYaw:which!=='idle_06',
+    preserveLegPose:which==='idle',
+  });
+  handoffClip=which;
+}
+let motionLoader=null;
+async function bindIdleMotions(token){
+  if(!USE_VRMA_IDLE) return;
+  const target=vrm;
+  const {VRMAnimationLoaderPlugin, createVRMAnimationClip}=await import('@pixiv/three-vrm-animation');
+  if(!motionLoader){
+    motionLoader=new GLTFLoader();
+    motionLoader.register((parser)=>new VRMAnimationLoaderPlugin(parser));
+  }
+  const [baseGltf, breakGltf]=await Promise.all([
+    motionLoader.loadAsync(idleMotionUrl),
+    motionLoader.loadAsync(idleBreakMotionUrl),
+  ]);
+  if(token!==motionToken||vrm!==target) return;
+  const baseAnim=baseGltf.userData.vrmAnimations?.[0];
+  const breakAnim=breakGltf.userData.vrmAnimations?.[0];
+  if(!baseAnim||!breakAnim) throw new Error('VRMA animation not found');
+  idleClip=createVRMAnimationClip(baseAnim, target);
+  idleBreakClip=createVRMAnimationClip(breakAnim, target);
+}
+const loader=new GLTFLoader();
+loader.register(parser=>new VRMLoaderPlugin(parser));
+async function loadVrm(url, revoke=false){
+  const token=++motionToken;
+  try{
+    const gltf=await loader.loadAsync(url);
+    if(vrm){scene.remove(vrm.scene);VRMUtils.deepDispose(vrm.scene)}
+    releaseVrmaIdle();
+    idleClip=null;
+    idleBreakClip=null;
+    vrm=gltf.userData.vrm;
+    if(!vrm)throw new Error('VRM model not found');
+    VRMUtils.rotateVRM0(vrm);
+    vrm.scene.traverse((obj)=>{ if(obj.isMesh){ obj.castShadow=true; obj.receiveShadow=true; } });
+    scene.add(vrm.scene);
+    initializeRetarget();
+    bindIdleMotions(token).catch((err)=>{
+      console.error(err);
+      lastError=`Idle motion failed to load: ${err.message}`;
+    });
+    status.textContent='ロゼを読み込みました。地面をクリックすると移動します。';
+  }catch(err){status.textContent=`VRMエラー: ${err.message}`}
+  finally{if(revoke) URL.revokeObjectURL(url)}
+}
+document.querySelector('#vrmFile').addEventListener('change',e=>{
+  const file=e.target.files?.[0];
+  if(!file)return;
+  loadVrm(URL.createObjectURL(file), true);
+});
+loadVrm('http://127.0.0.1:8765/roze.vrm');
+function chooseSpawn(built){
+  const spots=built.spots(12);
+  const dining=spots.find((p)=>/encaustic|timber/.test(built.surfaceAt(p.x, p.z) || ''));
+  return dining || spots[0] || built.openSpot() || built.bounds.getCenter(new THREE.Vector3());
+}
+async function loadCafe(){
+  try{
+    const folder=new URL('./', new URL(cafeFolderUrl, window.location.href)).href;
+    place=await buildKit({
+      folder,
+      onProgress:(done,total)=>{ placeNote=`カフェの部品 ${done}/${total}`; },
+    });
+    spawn=chooseSpawn(place);
+    scene.add(place.group);
+    const size=place.bounds.getSize(new THREE.Vector3());
+    const center=place.bounds.getCenter(new THREE.Vector3());
+    clickFloor.geometry.dispose();
+    clickFloor.geometry=new THREE.PlaneGeometry(Math.max(size.x, 16)+6, Math.max(size.z, 16)+6);
+    clickFloor.position.set(center.x, FLOOR_TOP, center.z);
+    scene.remove(fill, sun);
+    grid.visible=false;
+    look=stage(renderer, scene, {time:'day'});
+    look.shadows(place.group);
+    look.ground(place);
+    look.follow(vrm?.scene ?? place.group);
+    controls.target.set(spawn.x, FLOOR_TOP+lookHeight, spawn.z);
+    camera.position.set(spawn.x+camOffset.x, FLOOR_TOP+camOffset.y, spawn.z+camOffset.z);
+    followReady=false;
+    controls.update();
+    addUsecaseMarkers();
+    placeNote='Modern Restaurant Cafe';
+  }catch(err){
+    placeNote=`カフェ読込エラー: ${err.message}`;
+    console.error(err);
+  }
+}
+loadCafe();
+document.querySelector('#backgroundFile').addEventListener('change',e=>{
+  const file=e.target.files?.[0];
+  if(!file)return;
+  const url=URL.createObjectURL(file);
+  background.style.backgroundImage=`url("${url}")`;
+  grid.visible=false;
+});
+function makeUsecaseLabel(text){
+  const canvas=document.createElement('canvas');
+  canvas.width=512;
+  canvas.height=64;
+  const ctx=canvas.getContext('2d');
+  ctx.fillStyle='rgba(16,22,35,0.88)';
+  ctx.fillRect(0,0,512,64);
+  ctx.fillStyle='#f8f1e7';
+  ctx.font='24px "Yu Gothic UI", Meiryo, sans-serif';
+  ctx.textAlign='center';
+  ctx.textBaseline='middle';
+  ctx.fillText(text, 256, 32);
+  const sprite=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(canvas), transparent:true, depthTest:false}));
+  sprite.position.y=1.55;
+  sprite.scale.set(2.15, 0.27, 1);
+  sprite.renderOrder=2;
+  return sprite;
+}
+function addUsecaseMarkers(){
+  const ringMat=new THREE.MeshBasicMaterial({color:0xe0a96d, side:THREE.DoubleSide});
+  for(const usecase of markerCases){
+    const group=new THREE.Group();
+    group.position.set(usecase.x, FLOOR_TOP, usecase.z);
+    const ring=new THREE.Mesh(new THREE.RingGeometry(0.28, 0.4, 40), ringMat);
+    ring.rotation.x=-Math.PI/2;
+    ring.position.y=0.03;
+    const pick=new THREE.Mesh(
+      new THREE.CylinderGeometry(1.0, 1.0, 2.4, 12),
+      new THREE.MeshBasicMaterial({transparent:true, opacity:0, depthWrite:false}),
+    );
+    pick.position.y=1.2;
+    pick.userData.usecase=usecase;
+    group.add(ring, pick, makeUsecaseLabel(usecase.title));
+    scene.add(group);
+    usecasePicks.push(pick);
+  }
+}
+function nearestUsecase(x, z){
+  let best=null;
+  let bestDistance=USECASE_SNAP_M;
+  for(const usecase of markerCases){
+    const distance=Math.hypot(usecase.x-x, usecase.z-z);
+    if(distance<=bestDistance){
+      best=usecase;
+      bestDistance=distance;
+    }
+  }
+  return best;
+}
+function markActive(id){
+  document.querySelectorAll('#cases button').forEach((button)=>{
+    button.classList.toggle('active', button.dataset.id===id);
+  });
+}
+function sendArrival(usecase, x, z){
+  markInput();
+  if(!socket||socket.readyState!==WebSocket.OPEN||!spawn){
+    status.textContent='カフェかサーバーの準備ができていません。';
+    return;
+  }
+  pendingCase=usecase.title;
+  moveRequested=true;
+  sawLocomotion=false;
+  arrivedFromWalk=false;
+  clearHeldStop();
+  beginExitFromVrma();
+  markActive(usecase.id);
+  marker.position.set(x, FLOOR_TOP+0.02, z);
+  marker.visible=true;
+  clickAt=performance.now();
+  lastDecision=`${usecase.title} を選択中…`;
+  const goal=threePointToRuntime(x-spawn.x, z-spawn.z);
+  socket.send(JSON.stringify({type:'move', x:goal.x, y:goal.y, usecase:usecase.id, intent:usecase.intent}));
+}
+function buildUsecaseList(){
+  const root=document.querySelector('#cases');
+  for(const usecase of markerCases){
+    const button=document.createElement('button');
+    button.type='button';
+    button.dataset.id=usecase.id;
+    button.textContent=usecase.title;
+    button.addEventListener('click', ()=>sendArrival(usecase, usecase.x, usecase.z));
+    root.appendChild(button);
+  }
+}
+buildUsecaseList();
+function connect(){
+  socket=new WebSocket('ws://127.0.0.1:8765/ws');
+  socket.onopen=()=>{status.textContent='接続済み。VRMを読み込んでください。'};
+  socket.onmessage=(e)=>{
+    const msg=JSON.parse(e.data);
+    if(msg.type==='rig'){rig=msg;initializeRetarget()}
+    if(msg.type==='frame'){
+      lastPose=currentPose; currentPose=msg.poses; poseStamp=performance.now();
+      if(clickAt){clickLatency=performance.now()-clickAt; clickAt=0}
+      if(Number.isFinite(msg.generate_ms)) generateMs=msg.generate_ms;
+    }
+    if(msg.type==='metrics' && Number.isFinite(msg.generate_ms)) generateMs=msg.generate_ms;
+    if(msg.type==='decision'){
+      const size=Number(msg.catalog_size)||1173;
+      lastDecision=`${msg.usecase_title||pendingCase} → ${msg.pose_id} ${msg.name} [${msg.category||''}] (${msg.backend} / ${size}件 / confidence ${Number(msg.confidence).toFixed(2)} / ${Number(msg.elapsed_ms||0).toFixed(0)} ms)`;
+    }
+    if(msg.type==='arrived'){
+      const errorM=Number(msg.arrival_error_m);
+      const errorText=Number.isFinite(errorM)?` / 目標誤差 ${errorM.toFixed(2)}m`:'';
+      lastStage=`${pendingCase} / 停止完了: ${msg.pose_id} / SOMA姿勢 ${msg.pose_applied ? '適用済' : '未変換（公式idle）'}${errorText}`;
+    }
+    if(msg.type==='stop_triggered'){
+      lastStage=`減速→公式Idle遷移開始: 残り${Number(msg.distance_m).toFixed(2)}m / 速度${Number(msg.speed_mps).toFixed(2)}m/s`;
+    }
+    if(msg.type==='motion_state'){
+      motionPhase=msg.phase||motionPhase;
+      officialState=String(msg.official_state||'');
+      actualSpeed=Number(msg.actual_speed_mps);
+      const settled=motionPhase==='idle'||motionPhase==='pose_done';
+      if(!settled) sawLocomotion=true;
+      if(settled&&sawLocomotion){
+        moveRequested=false;
+        sawLocomotion=false;
+        if(motionPhase==='idle') arrivedFromWalk=true;
+      }
+      if(motionPhase!=='idle'){
+        arrivedFromWalk=false;
+        clearHeldStop();
+      }
+      const phase={idle:'待機',moving:'移動',stopping:'停止遷移',pose_pending:'ポーズ準備',pose_transition:'ポーズ移行',pose_done:'ポーズ完了'}[msg.phase]||msg.phase;
+      currentMotionState=`停止制御: ${phase} / 公式: ${msg.official_state} / 速度 ${Number(msg.actual_speed_mps).toFixed(2)}m/s`;
+    }
+    if(msg.type==='error'){lastError=msg.message}
+  };
+  socket.onclose=()=>{
+    status.textContent='サーバー未接続。バックエンドを起動してください。';
+    setTimeout(connect,1800);
+  };
+}
+connect();
+let pointerDownAt=null;
+renderer.domElement.addEventListener('wheel', ()=>{ markInput(); }, {passive:true});
+renderer.domElement.addEventListener('pointerdown',e=>{
+  markInput();
+  if(e.button!==0)return;
+  pointerDownAt={x:e.clientX,y:e.clientY};
+});
+renderer.domElement.addEventListener('pointerup',e=>{
+  if(e.button!==0||!pointerDownAt||!socket||socket.readyState!==WebSocket.OPEN||!spawn){
+    pointerDownAt=null;
+    return;
+  }
+  const dx=e.clientX-pointerDownAt.x;
+  const dy=e.clientY-pointerDownAt.y;
+  pointerDownAt=null;
+  // ドラッグ開始と誤判定しないよう、短いクリックのみ移動指示にする。
+  if(dx*dx+dy*dy>36)return;
+  const rect=renderer.domElement.getBoundingClientRect();
+  pointer.set(((e.clientX-rect.left)/rect.width)*2-1,-((e.clientY-rect.top)/rect.height)*2+1);
+  raycaster.setFromCamera(pointer,camera);
+  const picked=raycaster.intersectObjects(usecasePicks, false)[0];
+  if(picked){
+    const usecase=picked.object.userData.usecase;
+    sendArrival(usecase, usecase.x, usecase.z);
+    return;
+  }
+  const hit=raycaster.intersectObject(clickFloor)[0];
+  if(!hit)return;
+  const near=nearestUsecase(hit.point.x, hit.point.z);
+  if(near){
+    sendArrival(near, near.x, near.z);
+    return;
+  }
+  sendArrival(openFloor, hit.point.x, hit.point.z);
+});
+window.addEventListener('resize',()=>{
+  camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);
+});
+const clock=new THREE.Clock();
+let statusT=0;
+const followTarget=new THREE.Vector3();
+const lastFollow=new THREE.Vector3();
+let followReady=false;
+function animate(){
+  requestAnimationFrame(animate);
+  const delta=Math.min(clock.getDelta(),.1);
+  const blend=Math.min(1,(performance.now()-poseStamp)/(1000/60));
+  const pose=currentPose?lerpPose(lastPose, currentPose, blend):null;
+  if(vrm){
+    const clipsReady=Boolean(idleClip&&idleBreakClip);
+    const holdIdle=USE_VRMA_IDLE&&standingStill()&&clipsReady&&!exitBlend;
+    const holdStop=stoppedAfterWalk();
+    if(holdIdle){
+      const want=desiredIdleKind();
+      if(!handoff?.active){
+        // 歩行ですでに描いた足を開始にする。停止姿勢で上書きすると、一度開いてから閉じる。
+        if(!stanceApplied && pose) applyPose(pose);
+        lastInputAt=performance.now();
+        beginHandoff('idle');
+      }else if(handoffClip!==want){
+        beginHandoff(want);
+      }
+      handoff?.update(delta);
+      adjustStance();
+    }else if(holdStop){
+      releaseVrmaIdle();
+      holdStoppedPose(pose);
+    }else if(handoff?.active||exitBlend){
+      if(handoff?.active) beginExitFromVrma();
+      if(pose) applyPose(pose);
+      adjustStance();
+      blendExit();
+    }else{
+      clearHeldStop();
+      if(pose) applyPose(pose);
+      adjustStance();
+    }
+    vrm.update(delta);
+  }
+  if(place) place.tick(clock.elapsedTime);
+  if(vrm && look) look.follow(vrm.scene);
+  look?.update();
+  if(vrm){
+    const feet=vrm.scene.position;
+    followTarget.set(feet.x, feet.y+lookHeight, feet.z);
+    // 手動の回転・ズーム・パンは維持し、ロゼの移動分だけ視点を平行移動する。
+    if(followReady){
+      const dx=followTarget.x-lastFollow.x;
+      const dy=followTarget.y-lastFollow.y;
+      const dz=followTarget.z-lastFollow.z;
+      if(dx||dy||dz){
+        controls.target.x+=dx; controls.target.y+=dy; controls.target.z+=dz;
+        camera.position.x+=dx; camera.position.y+=dy; camera.position.z+=dz;
+      }
+    }
+    lastFollow.copy(followTarget);
+    followReady=true;
+  }
+  controls.update();
+  renderFrames+=1;
+  if(performance.now()-fpsStamp>500){
+    fps=renderFrames*1000/(performance.now()-fpsStamp);
+    renderFrames=0;
+    fpsStamp=performance.now();
+  }
+  statusT+=delta;
+  if(statusT>.5){
+    statusT=0;
+    status.textContent=[placeNote, socket?.readyState===1?'MotionBricks 接続中':'サーバー未接続',
+      vrm?'ロゼVRM 読み込み済み':'ロゼVRM 未読み込み',
+      exitBlend?'待機から歩行へ':handoff?.active?`待機 ${handoffClip}.vrma`:'',
+      `表示 ${fps.toFixed(0)} fps`,
+      generateMs!=null?`生成 ${generateMs.toFixed(0)} ms`:'',
+      clickLatency!=null?`クリックから姿勢更新 ${clickLatency.toFixed(0)} ms`:'',
+      `d3-mini: ${lastDecision}`,currentMotionState,lastStage,lastError].filter(Boolean).join('\n');
+  }
+  renderer.render(scene,camera);
+}
+animate();

@@ -1,0 +1,32 @@
+{
+  "count": 3,
+  "correct": 3,
+  "accuracy": 1.0,
+  "mean_elapsed_ms": 199.92999999999998,
+  "cases": [
+    {
+      "zone": "floor",
+      "pose_id": "F001",
+      "backend": "d3-mini",
+      "elapsed_ms": 164.87,
+      "confidence": 0.40228326072541176,
+      "correct": true
+    },
+    {
+      "zone": "chair",
+      "pose_id": "F043",
+      "backend": "d3-mini",
+      "elapsed_ms": 247.4,
+      "confidence": 0.5147914404292588,
+      "correct": true
+    },
+    {
+      "zone": "reaction",
+      "pose_id": "F012",
+      "backend": "d3-mini",
+      "elapsed_ms": 187.52,
+      "confidence": 0.47589073251621095,
+      "correct": true
+    }
+  ]
+}

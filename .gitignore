@@ -1,0 +1,13 @@
+.venv/
+web/node_modules/
+**/__pycache__/
+*.py[cod]
+.env
+.env.*
+*.log
+
+# Polyfork: アセットファイル自体の再配布はライセンスで禁止
+ModernRestaurantCafekit/
+
+# キャラクターモデルはローカル配置（server.py がリポジトリ直下を参照）
+/ロゼ.vrm
