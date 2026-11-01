@@ -41,3 +41,21 @@ test('switching back to walking blends leg rotations without a snap',()=>{
   idle.blendToLive(1);
   assert.ok(vrm.nodes.leftUpperLeg.quaternion.angleTo(new THREE.Quaternion())<1e-8);
 });
+
+test('a completed idle cannot replace the last displayed walking root and hips',()=>{
+  const vrm=avatar();
+  vrm.scene.position.set(1.2,0,-0.4);
+  vrm.nodes.hips.rotation.y=0.3;
+  vrm.nodes.leftUpperLeg.rotation.z=-0.19;
+  const expectedRoot=vrm.scene.position.clone();
+  const expectedHip=vrm.nodes.hips.quaternion.clone();
+  const expectedLeg=vrm.nodes.leftUpperLeg.quaternion.clone();
+  const idle=new GroundedIdle(vrm);
+  vrm.scene.position.x+=0.3;
+  vrm.nodes.hips.rotation.y=1.1;
+  vrm.nodes.leftUpperLeg.rotation.z=0.55;
+  idle.update(1/60);
+  assert.ok(vrm.scene.position.distanceTo(expectedRoot)<1e-9);
+  assert.ok(vrm.nodes.hips.quaternion.angleTo(expectedHip)<1e-8);
+  assert.ok(vrm.nodes.leftUpperLeg.quaternion.angleTo(expectedLeg)<1e-8);
+});
