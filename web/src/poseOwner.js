@@ -9,6 +9,9 @@ export function reduceOwner(owner, frame) {
   const settleSeq = frame.settleSeq ?? 0;
   if (owner.seenMove != null && moveId != null && moveId < owner.seenMove) return owner;
   if (moveId === owner.moveId && settleSeq < owner.settleSeq) return owner;
+  if (frame.phase === 'settled' && frame.bothPlanted !== true) {
+    return {...owner, mode: 'live', capture: false, blend: false};
+  }
   if (frame.phase === 'collect_preparing') {
     return {...owner, mode:'collect_preparing', capture:false, blend:false};
   }

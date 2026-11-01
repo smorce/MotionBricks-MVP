@@ -43,6 +43,7 @@ MOVING = "moving"
 DECELERATING = "decelerating"
 FINAL_STEP = "final_step"
 WAITING = "waiting_for_foot_contact"
+CONTACT_RECOVERY = "contact_recovery"
 SETTLED = "settled"
 POSE_PENDING = "pose_pending"
 POSE_TRANSITION = "pose_transition"
@@ -91,6 +92,8 @@ class LocomotionCycle:
         self.pose_time = 0.0
         self.clock = 0.0
         self.stop_requested_s: float | None = None
+        self.stop_facing = None
+        self._plants_updated_s = None
         self.last_plant_s: float | None = None
         self.settled_s: float | None = None
         self.contact_fallback = False
@@ -131,6 +134,7 @@ class LocomotionCycle:
         self._seed_pending = False
         self.pose_time = 0.0
         self.stop_requested_s = None
+        self.stop_facing = None
         self.last_plant_s = None
         self.settled_s = None
         self.contact_fallback = False
@@ -244,6 +248,7 @@ class LocomotionCycle:
         facing = self._facing(pose, obs.get("facing"))
         if self.mode is None:
             self._classify(pose, parents, names, distance)
+        self._update_plants(obs, pose, parents, names, dt)
 
         if self.phase == COLLECTING:
             frame = self.collect_frames[self.collect_index]
@@ -256,8 +261,10 @@ class LocomotionCycle:
             return self._action(self.settled_pose, pose_out=self.settled_pose, obs=obs)
 
         if self.mode == "micro" and self.phase != SETTLED:
-            self._settle(pose, "micro")
-            return self._hold_or_arrive(pose, obs)
+            if self.stop_requested_s is None:
+                self.stop_requested_s = self.clock
+                self.stop_facing = facing.copy()
+            return self._wait_to_settle(pose, parents, names, obs)
 
         if self.phase == SETTLED:
             return self._hold_or_arrive(pose, obs)
@@ -268,7 +275,7 @@ class LocomotionCycle:
             self.step = None
 
         stop_at = self.choice.final_window_m if gait_plan.USE_PROCEDURAL_STEP else MICRO_M
-        if self.mode == "walk" and distance > stop_at:
+        if self.stop_requested_s is None and self.mode == "walk" and distance > stop_at:
             self.phase = DECELERATING if distance <= DECEL_ZONE_M else MOVING
             prime = not self.walk_primed
             self.walk_primed = True
@@ -277,8 +284,8 @@ class LocomotionCycle:
         # 通常歩行の最後、または短距離の踏み出し。ここから公式 Idle には入らない。
         if self.stop_requested_s is None:
             self.stop_requested_s = self.clock
+            self.stop_facing = facing.copy()
             self._event = "stop_requested"
-        self._capture_ground(pose, parents, names)
 
         if not gait_plan.USE_PROCEDURAL_STEP:
             return self._wait_to_settle(pose, parents, names, obs)
@@ -317,17 +324,20 @@ class LocomotionCycle:
         self._capture_ground(pose, parents, names)
 
     def _wait_to_settle(self, pose, parents, names, obs) -> Action:
-        """歩行入力を止め、両足接地（または時間切れ）を待って着地姿勢を保持する。"""
+        """公式歩行を進めながら接地を待ち、時間切れは回復状態にする。"""
         both, _fallback = self._feet_ready(obs, pose, parents, names, self._dt)
         waited = self.clock - (self.stop_requested_s or self.clock)
-        if both or waited > CONTACT_WAIT_S:
-            if not both:
-                self.contact_fallback = True
-            self._settle(pose, "plant" if both else "contact_timeout")
+        if both:
+            self._settle(pose, "plant")
             return self._hold_or_arrive(pose, obs)
-        self.phase = WAITING
-        self.contact_fallback = not bool(obs.get("contacts_available", False))
-        return self._action(pose, pose_out=pose, seed=True, obs=obs)
+        timed_out = waited > CONTACT_WAIT_S
+        if timed_out and self.phase != CONTACT_RECOVERY:
+            self._event = "contact_timeout"
+        self.phase = CONTACT_RECOVERY if timed_out else WAITING
+        self.contact_fallback = timed_out or not bool(obs.get("contacts_available", False))
+        prime = not self.walk_primed
+        self.walk_primed = True
+        return self._action(pose, walk=True, prime_walk=prime, facing=self.stop_facing, obs=obs)
 
     def _advance_procedural(self, parents, names, obs) -> Action:
         pose, self.step = advance_step(parents, names, self.step, self._dt)
@@ -354,9 +364,9 @@ class LocomotionCycle:
                 self.collect_checked = True
                 self.collect_failure_reason = "Upper idle readiness timed out"
             elif waited >= COLLECT_WAIT_S and self.upper_idle_ready:
-                self.collect_checked = True
                 self._update_plants(obs, shown, self.parents, self.names, self._dt)
                 sagittal, width = stance(shown, self.parents, self.names)
+                self.collect_checked = self.plants.left and self.plants.right
                 if self.plants.left and self.plants.right and needs_collect(sagittal, width):
                     self.collect_attempted = True
                     self.collect_original_pose = shown.copy()
@@ -433,6 +443,9 @@ class LocomotionCycle:
         self._ground_z = min(zs)
 
     def _update_plants(self, obs, pose, parents, names, dt) -> None:
+        if self._plants_updated_s == self.clock:
+            return
+        self._plants_updated_s = self.clock
         points = foot_points(pose, parents, names)
         heights = np.array([
             points["left"]["ankle"][2], points["left"]["toe"][2],

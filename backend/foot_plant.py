@@ -58,7 +58,7 @@ def foot_plant_score(
     ground_z: float,
 ) -> float:
     """片足。速く動いている足は、接触値だけでは接地にしない。"""
-    if max(speeds) > 0.16:
+    if max(speeds) > 0.16 or min(heights) - ground_z >= 0.07:
         return 0.0
     heel = None if contacts is None else contacts[0]
     toe = None if contacts is None else contacts[1]

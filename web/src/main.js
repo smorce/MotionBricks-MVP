@@ -722,6 +722,7 @@ function connect(){
         if(gait.collect_metrics?.before) lastStage+=` / 足幅 前 ${gait.collect_metrics.before.map(v=>v.toFixed(3)).join('/')}m → 後 ${gait.collect_metrics.after.map(v=>v.toFixed(3)).join('/')}m`;
       }
       const reduced=reduceOwner(owner, {
+        bothPlanted: gait.feet?.left?.planted === true && gait.feet?.right?.planted === true,
         phase: msg.phase || motionPhase,
         moveId: msg.gait?.move_id ?? owner.moveId,
         settleSeq: msg.gait?.settle_seq ?? owner.settleSeq,
@@ -768,7 +769,7 @@ function connect(){
       }
       const phase={
         idle:'待機', moving:'移動', decelerating:'減速', final_step:'最後の一歩',
-        waiting_for_foot_contact:'着地待ち', settled:'停止姿勢',
+        waiting_for_foot_contact:'着地待ち', contact_recovery:'接地回復中', settled:'停止姿勢',
         pose_pending:'ポーズ準備', pose_transition:'ポーズ移行', pose_done:'ポーズ完了',
       }[msg.phase]||msg.phase;
       currentMotionState=`動作: ${phase} / 公式: ${msg.official_state} / 速度 ${Number(msg.actual_speed_mps).toFixed(2)}m/s`;

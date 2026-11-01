@@ -364,7 +364,7 @@ def worker(commands: Queue, publish):
                     print(f"Collect rejected: {metrics['reason']}", flush=True)
             pose = character.current_pose.numpy().reshape((-1, 7)).copy()
             playback = character._playback_source.name
-            contacts_available = playback != "CLIP" and cycle.phase in (IDLE, "moving", "decelerating")
+            contacts_available = playback != "CLIP" and cycle.phase in (IDLE, "moving", "decelerating", "waiting_for_foot_contact", "contact_recovery")
             root_speed = 0.0
             if last_root is not None:
                 root_speed = float(np.linalg.norm(pose[0, :2] - last_root) / DT)

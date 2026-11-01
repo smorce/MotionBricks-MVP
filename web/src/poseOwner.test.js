@@ -6,22 +6,22 @@ import {runtimeJointToThree, threeJointToRuntime} from './coords.js';
 
 test('settled stance is kept when a later frame only changes speed', () => {
   let owner = reduceOwner(emptyOwner(), {phase: 'moving', moveId: 4, settleSeq: 0});
-  owner = reduceOwner(owner, {phase: 'settled', moveId: 4, settleSeq: 2, actualSpeed: 0});
+  owner = reduceOwner(owner, {phase: 'settled', bothPlanted: true, moveId: 4, settleSeq: 2, actualSpeed: 0});
   assert.equal(owner.mode, 'settled');
   assert.equal(owner.capture, true);
   owner = {...owner, capture: false};
-  owner = reduceOwner(owner, {phase: 'settled', moveId: 4, settleSeq: 2, actualSpeed: 1.8});
+  owner = reduceOwner(owner, {phase: 'settled', bothPlanted: true, moveId: 4, settleSeq: 2, actualSpeed: 1.8});
   assert.equal(owner.mode, 'settled');
   assert.equal(owner.capture, false);
   assert.equal(shouldApplyStance(owner), false);
 });
 
 test('a delayed settle from the previous move does not replace the new walk', () => {
-  let owner = reduceOwner(emptyOwner(), {phase: 'settled', moveId: 3, settleSeq: 1});
+  let owner = reduceOwner(emptyOwner(), {phase: 'settled', bothPlanted: true, moveId: 3, settleSeq: 1});
   owner = reduceOwner(owner, {phase: 'moving', moveId: 4, settleSeq: 1});
   assert.equal(owner.mode, 'live');
   assert.equal(owner.blend, true);
-  const stale = reduceOwner(owner, {phase: 'settled', moveId: 3, settleSeq: 1});
+  const stale = reduceOwner(owner, {phase: 'settled', bothPlanted: true, moveId: 3, settleSeq: 1});
   assert.equal(stale.mode, 'live');
   assert.equal(stale.seenMove, 4);
 });
