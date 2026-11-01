@@ -9,7 +9,8 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-from gait_plan import classify_distance, walk_command_scale
+import gait_plan
+from gait_plan import MICRO_M, classify_distance, walk_command_scale
 
 # 立ち姿勢からの仮の水平リーチ。実ポーズでは LocomotionCycle が測り直す。
 NOMINAL_REACH_M = 0.55
@@ -49,7 +50,9 @@ def plan_click_move(
     if not math.isfinite(speed) or speed < 0:
         raise ValueError("speed_mps must be finite and >= 0")
     choice = classify_distance(distance, settings.nominal_reach_m)
-    # 通常歩行でも、残りが一歩以内なら線形移動を止めて踏み出しに渡す。
-    handoff = choice.mode != "walk" or distance <= choice.final_window_m
+    # 手続き ON: 残りが一歩以内なら線形移動を止めて踏み出しに渡す。
+    # 手続き OFF: 公式 Walk を MICRO まで続け、着地待ちへ渡す。
+    stop_at = choice.final_window_m if gait_plan.USE_PROCEDURAL_STEP else MICRO_M
+    handoff = choice.mode != "walk" or distance <= stop_at
     strength = 0.0 if handoff else walk_command_scale("walk")
-    return ClickDecision(handoff, strength, choice.final_window_m, distance, choice.mode)
+    return ClickDecision(handoff, strength, stop_at, distance, choice.mode)

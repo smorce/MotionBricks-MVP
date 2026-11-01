@@ -3,7 +3,8 @@
 描画する姿勢の所有者はフェーズごとに一つにする。
 
 - walk: MotionBricks の線形移動。入力の長さは 1 で、Walk ブレンドに置く。
-- short_step / few_steps / 最後の一歩: このモジュールの踏み出し。支持足は固定する。
+- short_step / few_steps / 最後の一歩: gait_plan.USE_PROCEDURAL_STEP が True のときだけ。
+  支持足を固定した手続き踏み出し。切り分け中の既定は False（公式 Walk のみ）。
 - settled: 着地した同一フレームの姿勢を、次の移動要求まで保持する。
   公式 Idle へは入らない。IdleState.enter が待機クリップの開始姿勢へ生成し、
   足幅が変わるためである。
@@ -17,7 +18,14 @@ import numpy as np
 
 from foot_plant import PlantState, stance_width_m
 from gait_log import GAIT_LOG
-from gait_plan import DECEL_ZONE_M, OFFICIAL_WALK_SPEED_MPS, classify_distance, horizontal_reach_m
+import gait_plan
+from gait_plan import (
+    DECEL_ZONE_M,
+    MICRO_M,
+    OFFICIAL_WALK_SPEED_MPS,
+    classify_distance,
+    horizontal_reach_m,
+)
 from step_cycle import (
     advance_step,
     begin_step,
@@ -176,10 +184,13 @@ class LocomotionCycle:
         if self.phase == SETTLED:
             return self._hold_or_arrive(pose, obs)
 
-        if self.step is not None:
+        if gait_plan.USE_PROCEDURAL_STEP and self.step is not None:
             return self._advance_procedural(parents, names, obs)
+        if not gait_plan.USE_PROCEDURAL_STEP:
+            self.step = None
 
-        if self.mode == "walk" and distance > self.choice.final_window_m:
+        stop_at = self.choice.final_window_m if gait_plan.USE_PROCEDURAL_STEP else MICRO_M
+        if self.mode == "walk" and distance > stop_at:
             self.phase = DECELERATING if distance <= DECEL_ZONE_M else MOVING
             prime = not self.walk_primed
             self.walk_primed = True
@@ -190,21 +201,15 @@ class LocomotionCycle:
             self.stop_requested_s = self.clock
             self._event = "stop_requested"
         self._capture_ground(pose, parents, names)
+
+        if not gait_plan.USE_PROCEDURAL_STEP:
+            return self._wait_to_settle(pose, parents, names, obs)
+
         if self.mode == "walk":
             self.budget = distance
             self.mode = "final"
         if self.budget <= 0.08 and self.step is None:
-            # 残りが到着誤差の内側なら、歩行入力を続けて滑らせない。
-            both, _fallback = self._feet_ready(obs, pose, parents, names, dt)
-            waited = self.clock - (self.stop_requested_s or self.clock)
-            if both or waited > CONTACT_WAIT_S:
-                if not both:
-                    self.contact_fallback = True
-                self._settle(pose, "plant" if both else "contact_timeout")
-                return self._hold_or_arrive(pose, obs)
-            self.phase = WAITING
-            self.contact_fallback = not bool(obs.get("contacts_available", False))
-            return self._action(pose, pose_out=pose, seed=True, obs=obs)
+            return self._wait_to_settle(pose, parents, names, obs)
 
         swing = self._swing_choice(pose, parents, names)
         kind_distance = min(self.budget, self.choice.final_window_m)
@@ -232,6 +237,19 @@ class LocomotionCycle:
         self.travel_mode = self.choice.mode
         self.budget = 0.0 if self.mode in ("walk", "micro") else distance
         self._capture_ground(pose, parents, names)
+
+    def _wait_to_settle(self, pose, parents, names, obs) -> Action:
+        """歩行入力を止め、両足接地（または時間切れ）を待って着地姿勢を保持する。"""
+        both, _fallback = self._feet_ready(obs, pose, parents, names, self._dt)
+        waited = self.clock - (self.stop_requested_s or self.clock)
+        if both or waited > CONTACT_WAIT_S:
+            if not both:
+                self.contact_fallback = True
+            self._settle(pose, "plant" if both else "contact_timeout")
+            return self._hold_or_arrive(pose, obs)
+        self.phase = WAITING
+        self.contact_fallback = not bool(obs.get("contacts_available", False))
+        return self._action(pose, pose_out=pose, seed=True, obs=obs)
 
     def _advance_procedural(self, parents, names, obs) -> Action:
         pose, self.step = advance_step(parents, names, self.step, self._dt)

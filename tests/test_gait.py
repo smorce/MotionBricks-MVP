@@ -9,12 +9,29 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 
+import gait_plan
 from foot_plant import PlantState, stance_width_m
 from gait_log import GaitLog
 from gait_plan import classify_distance, walk_command_scale
 from locomotion_cycle import SETTLED, WAITING, LocomotionCycle
 from soma_skeleton import SOMA_JOINT_NAMES, soma_parents
 from step_cycle import advance_step, begin_step, foot_points, fk
+
+
+class _ProceduralFlag:
+    """テスト中だけ手続き踏み出しの有無を切り替える。"""
+
+    def __init__(self, enabled: bool):
+        self.enabled = enabled
+        self._prev = None
+
+    def __enter__(self):
+        self._prev = gait_plan.USE_PROCEDURAL_STEP
+        gait_plan.USE_PROCEDURAL_STEP = self.enabled
+        return self
+
+    def __exit__(self, *_exc):
+        gait_plan.USE_PROCEDURAL_STEP = self._prev
 
 
 def standing_pose():
@@ -110,23 +127,33 @@ class FootPlantTests(unittest.TestCase):
 class GaitPlanTests(unittest.TestCase):
     def test_distance_bands_and_full_walk_input(self):
         reach = 0.55
-        self.assertEqual(classify_distance(0.05, reach).mode, "micro")
-        self.assertEqual(classify_distance(0.30, reach).mode, "short_step")
-        # 届く一歩が 0.55m なので、0.60m は一歩では覆えない。
-        self.assertEqual(classify_distance(0.60, reach).mode, "few_steps")
-        self.assertEqual(classify_distance(0.50, reach).mode, "short_step")
-        self.assertEqual(classify_distance(1.0, reach).mode, "few_steps")
-        self.assertEqual(classify_distance(2.0, reach).mode, "walk")
+        with _ProceduralFlag(True):
+            self.assertEqual(classify_distance(0.05, reach).mode, "micro")
+            self.assertEqual(classify_distance(0.30, reach).mode, "short_step")
+            # 届く一歩が 0.55m なので、0.60m は一歩では覆えない。
+            self.assertEqual(classify_distance(0.60, reach).mode, "few_steps")
+            self.assertEqual(classify_distance(0.50, reach).mode, "short_step")
+            self.assertEqual(classify_distance(1.0, reach).mode, "few_steps")
+            self.assertEqual(classify_distance(2.0, reach).mode, "walk")
         self.assertEqual(walk_command_scale("walk"), 1.0)
         self.assertEqual(walk_command_scale("short_step"), 0.0)
         self.assertNotIn(round(walk_command_scale("short_step"), 2), (0.12,))
 
     def test_short_edge_follows_reach_without_a_hard_pop(self):
-        near = classify_distance(0.50, 0.48)
-        far = classify_distance(0.50, 0.70)
-        self.assertEqual(near.mode, "few_steps")
-        self.assertEqual(far.mode, "short_step")
-        self.assertLess(abs(near.short_edge_m - far.short_edge_m), 0.2)
+        with _ProceduralFlag(True):
+            near = classify_distance(0.50, 0.48)
+            far = classify_distance(0.50, 0.70)
+            self.assertEqual(near.mode, "few_steps")
+            self.assertEqual(far.mode, "short_step")
+            self.assertLess(abs(near.short_edge_m - far.short_edge_m), 0.2)
+
+    def test_procedural_off_classifies_non_micro_as_walk(self):
+        reach = 0.55
+        with _ProceduralFlag(False):
+            self.assertEqual(classify_distance(0.05, reach).mode, "micro")
+            self.assertEqual(classify_distance(0.30, reach).mode, "walk")
+            self.assertEqual(classify_distance(0.60, reach).mode, "walk")
+            self.assertEqual(classify_distance(2.0, reach).mode, "walk")
 
 
 class StepTests(unittest.TestCase):
@@ -192,28 +219,32 @@ class StepTests(unittest.TestCase):
 
 
 class CycleTests(unittest.TestCase):
-    def _run(self, distance, hold=True, speed_walk=False):
+    def _run(self, distance, hold=True, speed_walk=False, procedural=True):
         pose, _parents, _names = standing_pose()
         log = GaitLog()
         cycle = LocomotionCycle(log)
         cycle.begin_move((distance, 0.0), hold, move_id=1)
         poses = []
         actions = []
-        for _ in range(240):
-            action = cycle.tick(observe(pose, speed=2.3 if action_walk(actions) else 0.0))
-            actions.append(action)
-            if speed_walk and action.walk:
-                pose = pose.copy()
-                pose[0, 0] += 2.3 / 60
-            elif action.pose is not None:
-                pose = action.pose
-            poses.append(pose.copy())
-            if cycle.phase == SETTLED and not action.begin_arrival:
-                break
+        with _ProceduralFlag(procedural):
+            for _ in range(240):
+                action = cycle.tick(observe(pose, speed=2.3 if action_walk(actions) else 0.0))
+                actions.append(action)
+                if speed_walk and action.walk:
+                    pose = pose.copy()
+                    pose[0, 0] += 2.3 / 60
+                elif action.walk and not procedural:
+                    pose = pose.copy()
+                    pose[0, 0] += min(2.3 / 60, max(0.0, distance - pose[0, 0]))
+                elif action.pose is not None:
+                    pose = action.pose
+                poses.append(pose.copy())
+                if cycle.phase == SETTLED and not action.begin_arrival:
+                    break
         return cycle, actions, poses, log
 
     def test_short_step_arrives_without_sliding_the_stance_foot(self):
-        cycle, actions, poses, log = self._run(0.30)
+        cycle, actions, poses, log = self._run(0.30, procedural=True)
         self.assertEqual(cycle.phase, SETTLED)
         self.assertLess(abs(poses[-1][0, 0] - 0.30), 0.08)
         self.assertTrue(any(item.pose is not None and not item.walk for item in actions))
@@ -235,25 +266,47 @@ class CycleTests(unittest.TestCase):
         cycle.begin_move((4.0, 0.0), True, 2)
         saw_walk = False
         saw_step = False
-        for _ in range(180):
-            action = cycle.tick(observe(pose, speed=2.3))
-            if action.walk:
-                saw_walk = True
-                self.assertIsNone(action.pose)
-                pose = pose.copy()
-                pose[0, 0] += 2.3 / 60
-            else:
-                self.assertIsNotNone(action.pose)
-                saw_step = True
-                pose = action.pose
-            if cycle.phase == SETTLED:
-                break
+        with _ProceduralFlag(True):
+            for _ in range(180):
+                action = cycle.tick(observe(pose, speed=2.3))
+                if action.walk:
+                    saw_walk = True
+                    self.assertIsNone(action.pose)
+                    pose = pose.copy()
+                    pose[0, 0] += 2.3 / 60
+                else:
+                    self.assertIsNotNone(action.pose)
+                    saw_step = True
+                    pose = action.pose
+                if cycle.phase == SETTLED:
+                    break
         self.assertTrue(saw_walk and saw_step)
         self.assertLess(abs(pose[0, 0] - 4.0), 0.10)
         self.assertEqual(cycle.phase, SETTLED)
 
+    def test_procedural_off_uses_official_walk_without_step_cycle(self):
+        cycle, actions, poses, log = self._run(4.0, procedural=False)
+        self.assertEqual(cycle.phase, SETTLED)
+        self.assertTrue(any(item.walk for item in actions))
+        self.assertIsNone(cycle.step)
+        self.assertFalse(any(row["phase"] == "final_step" for row in log.snapshot()))
+        self.assertLess(abs(poses[-1][0, 0] - 4.0), 0.12)
+        self.assertTrue(
+            any(row["event"] in ("plant", "contact_timeout") for row in log.snapshot())
+        )
+
+    def test_procedural_off_short_goal_never_builds_a_step(self):
+        cycle, actions, poses, _log = self._run(0.30, procedural=False)
+        self.assertEqual(cycle.phase, SETTLED)
+        self.assertIsNone(cycle.step)
+        self.assertTrue(any(item.walk for item in actions))
+        self.assertFalse(any(
+            item.pose is not None and item.phase == "final_step" for item in actions
+        ))
+        self.assertLess(abs(poses[-1][0, 0] - 0.30), 0.12)
+
     def test_settled_pose_survives_a_speed_spike_and_a_late_frame(self):
-        cycle, _actions, poses, _log = self._run(0.30)
+        cycle, _actions, poses, _log = self._run(0.30, procedural=True)
         frozen = poses[-1].copy()
         spiked = frozen.copy()
         spiked[0, 0] += 0.4
@@ -268,45 +321,47 @@ class CycleTests(unittest.TestCase):
     def test_new_move_replaces_the_previous_step(self):
         pose, _p, _n = standing_pose()
         cycle = LocomotionCycle(GaitLog())
-        cycle.begin_move((0.4, 0.0), True, 1)
-        cycle.tick(observe(pose))
-        cycle.begin_move((0.25, 0.4), True, 2)
-        self.assertEqual(cycle.move_id, 2)
-        self.assertEqual(cycle.step, None)
-        action = cycle.tick(observe(pose))
-        self.assertEqual(action.gait["move_id"], 2)
+        with _ProceduralFlag(True):
+            cycle.begin_move((0.4, 0.0), True, 1)
+            cycle.tick(observe(pose))
+            cycle.begin_move((0.25, 0.4), True, 2)
+            self.assertEqual(cycle.move_id, 2)
+            self.assertEqual(cycle.step, None)
+            action = cycle.tick(observe(pose))
+            self.assertEqual(action.gait["move_id"], 2)
 
     def test_arrival_pose_waits_and_runs_once(self):
         pose, _p, _n = standing_pose()
         cycle = LocomotionCycle(GaitLog())
-        cycle.begin_move((0.30, 0.0), False, 7)
-        action = None
-        for _ in range(180):
-            action = cycle.tick(observe(pose if action is None or action.pose is None else action.pose))
-            if action.pose is not None:
-                pose = action.pose
-            if cycle.phase == SETTLED:
-                break
-        self.assertEqual(cycle.phase, SETTLED)
-        waiting = cycle.tick(observe(pose, speed=0.0))
-        self.assertFalse(waiting.begin_arrival)
-        cycle.note_pose_choice("F043")
-        started = cycle.tick(observe(pose))
-        self.assertTrue(started.begin_arrival)
-        cycle.note_arrival(True, 0.4)
-        again = cycle.tick(observe(pose))
-        self.assertFalse(again.begin_arrival)
-        self.assertEqual(again.phase, "pose_transition")
+        with _ProceduralFlag(True):
+            cycle.begin_move((0.30, 0.0), False, 7)
+            action = None
+            for _ in range(180):
+                action = cycle.tick(observe(pose if action is None or action.pose is None else action.pose))
+                if action.pose is not None:
+                    pose = action.pose
+                if cycle.phase == SETTLED:
+                    break
+            self.assertEqual(cycle.phase, SETTLED)
+            waiting = cycle.tick(observe(pose, speed=0.0))
+            self.assertFalse(waiting.begin_arrival)
+            cycle.note_pose_choice("F043")
+            started = cycle.tick(observe(pose))
+            self.assertTrue(started.begin_arrival)
+            cycle.note_arrival(True, 0.4)
+            again = cycle.tick(observe(pose))
+            self.assertFalse(again.begin_arrival)
+            self.assertEqual(again.phase, "pose_transition")
 
     def test_hold_stance_never_starts_arrival(self):
-        cycle, _a, _p, _l = self._run(0.30, hold=True)
+        cycle, _a, poses, _l = self._run(0.30, hold=True, procedural=True)
         cycle.note_pose_choice("F043")
-        action = cycle.tick(observe(_p[-1]))
+        action = cycle.tick(observe(poses[-1]))
         self.assertFalse(action.begin_arrival)
         self.assertEqual(action.phase, SETTLED)
 
     def test_missing_contacts_still_settle(self):
-        cycle, actions, _poses, log = self._run(0.30)
+        cycle, actions, _poses, log = self._run(0.30, procedural=True)
         self.assertEqual(cycle.phase, SETTLED)
         self.assertTrue(any(row["contact_source"] == "geometry" for row in log.snapshot()))
         self.assertTrue(actions[-1].gait["contact_fallback"] or actions[-1].gait["contact_source"] == "geometry")

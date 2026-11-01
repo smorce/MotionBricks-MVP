@@ -18,6 +18,8 @@ MICRO_M = 0.08
 SPEC_SHORT_M = 0.62
 SPEC_FEW_M = 1.25
 DECEL_ZONE_M = 2.2
+# 切り分け中は False。独自踏み出し（step_cycle IK）を使わず公式 Walk のみにする。
+USE_PROCEDURAL_STEP = False
 
 
 @dataclass(frozen=True)
@@ -46,6 +48,8 @@ def classify_distance(distance_m: float, reach_m: float) -> GaitChoice:
     window = min(0.70, max(0.25, reach))
     if distance < MICRO_M:
         mode = "micro"
+    elif not USE_PROCEDURAL_STEP:
+        mode = "walk"
     elif distance <= short_edge:
         mode = "short_step"
     elif distance <= few_edge:

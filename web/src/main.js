@@ -7,6 +7,7 @@ import {abductUpperArms, adductUpperLegs, pointFeetForward, stanceData} from './
 import {IdleHandoff} from './idleHandoff.js';
 import {GroundedIdle} from './groundedIdle.js';
 import {emptyOwner, reduceOwner, shouldApplyStance} from './poseOwner.js';
+import {isSceneBootReady, spawnOffset} from './bootGate.js';
 import {GaitDebug} from './gaitDebug.js';
 import {formatGaitStatus} from './gaitView.js';
 import idleMotionUrl from '../../motions/idle.vrma?url';
@@ -17,10 +18,11 @@ import cafeFolderUrl from '../../ModernRestaurantCafekit/kit.json?url';
 import cafeUsecases from '../../backend/cafe_usecases.json';
 
 const FLOOR_TOP=0.05;
-// false のとき待機 VRMA は再生しない。歩行後の停止は、画面に出ていた姿勢を保つ。
+// false のとき公式 Idle / VRMA 全身再生はしない。settled の上半身寄せには idle.vrma を使う。
 const USE_VRMA_IDLE=false;
 const IDLE_QUIET_MS=5000;
 const IDLE_FADE_SEC=0.8;
+const UPPER_BLEND_MAX=0.65;
 const IDLE_SPEED_MAX=0.2;
 const USECASE_SNAP_M=1.0;
 const camOffset=new THREE.Vector3(3.6, 2.35, 4.8);
@@ -193,6 +195,7 @@ let generateMs=null;
 let place=null;
 let look=null;
 let spawn=null;
+let sceneReady=false;
 let placeNote='カフェを読み込み中';
 let pendingCase='';
 let motionPhase='idle';
@@ -263,11 +266,12 @@ function lerpPose(a, b, t){
 }
 function placeRoot(pose){
   if(!rig||!vrm||!pose?.length) return;
-  const ox=spawn?.x??0, oz=spawn?.z??0;
-  vrm.scene.position.set(pose[0][0]-rig.rest[0][0]+ox, pose[0][2]-rig.rest[0][2]+FLOOR_TOP, -pose[0][1]+rig.rest[0][1]+oz);
+  const origin=spawnOffset(spawn);
+  if(!origin) return;
+  vrm.scene.position.set(pose[0][0]-rig.rest[0][0]+origin.x, pose[0][2]-rig.rest[0][2]+FLOOR_TOP, -pose[0][1]+rig.rest[0][1]+origin.z);
 }
 function applyPose(pose){
-  if(!rig||!vrm||!restSourceWorld.length||pose.length!==rig.joint_names.length)return;
+  if(!rig||!vrm||!restSourceWorld.length||!spawn||pose.length!==rig.joint_names.length)return;
   // Roze's scene origin follows the source hips ground position; don't add hips height twice.
   placeRoot(pose);
   vrm.scene.updateMatrixWorld(true);
@@ -312,8 +316,56 @@ function releaseVrmaIdle(){
 }
 let groundedIdle=null;
 let idleExit=null;
+const followTarget=new THREE.Vector3();
+const lastFollow=new THREE.Vector3();
+let followReady=false;
 function clearHeldStop(){
   groundedIdle=null;
+}
+function bootReady(){
+  return isSceneBootReady({
+    spawn,
+    hasVrm:Boolean(vrm),
+    hasRig:Boolean(rig),
+    hasPose:Boolean(currentPose?.length),
+    hasRetarget:restSourceWorld.length>0,
+  });
+}
+function syncCameraToCharacter(){
+  if(!vrm) return;
+  const feet=vrm.scene.position;
+  controls.target.set(feet.x, FLOOR_TOP+lookHeight, feet.z);
+  camera.position.set(feet.x+camOffset.x, FLOOR_TOP+camOffset.y, feet.z+camOffset.z);
+  followTarget.set(feet.x, feet.y+lookHeight, feet.z);
+  lastFollow.copy(followTarget);
+  followReady=true;
+  controls.update();
+}
+function captureSettledIdle(){
+  if(!vrm||!currentPose) return;
+  applyPose(currentPose);
+  adjustStance();
+  groundedIdle=new GroundedIdle(vrm, {
+    idleClip,
+    fadeSeconds:IDLE_FADE_SEC,
+    upperBlendMax:UPPER_BLEND_MAX,
+  });
+  owner={...owner, capture:false};
+  moveRequested=false;
+}
+function tryRevealCharacter(){
+  if(sceneReady||!bootReady()) return;
+  // 表示前にバックエンド座標を確定する。停止姿勢の保存は位置確定の後だけ。
+  if(owner.mode==='settled'||owner.capture){
+    captureSettledIdle();
+  }else{
+    applyPose(currentPose);
+    if(shouldApplyStance(owner)) adjustStance();
+  }
+  syncCameraToCharacter();
+  vrm.scene.visible=true;
+  sceneReady=true;
+  status.textContent='ロゼの位置を同期しました。地面をクリックすると移動します。';
 }
 function captureCharacterPose(){
   const held=[];
@@ -404,22 +456,26 @@ function beginHandoff(which){
 }
 let motionLoader=null;
 async function bindIdleMotions(token){
-  if(!USE_VRMA_IDLE) return;
   const target=vrm;
   const {VRMAnimationLoaderPlugin, createVRMAnimationClip}=await import('@pixiv/three-vrm-animation');
   if(!motionLoader){
     motionLoader=new GLTFLoader();
     motionLoader.register((parser)=>new VRMAnimationLoaderPlugin(parser));
   }
-  const [baseGltf, breakGltf]=await Promise.all([
-    motionLoader.loadAsync(idleMotionUrl),
-    motionLoader.loadAsync(idleBreakMotionUrl),
-  ]);
+  // settled の上半身 Idle 用。USE_VRMA_IDLE が false でも base は読む。
+  const baseGltf=await motionLoader.loadAsync(idleMotionUrl);
   if(token!==motionToken||vrm!==target) return;
   const baseAnim=baseGltf.userData.vrmAnimations?.[0];
-  const breakAnim=breakGltf.userData.vrmAnimations?.[0];
-  if(!baseAnim||!breakAnim) throw new Error('VRMA animation not found');
+  if(!baseAnim) throw new Error('VRMA animation not found');
   idleClip=createVRMAnimationClip(baseAnim, target);
+  if(!USE_VRMA_IDLE){
+    idleBreakClip=null;
+    return;
+  }
+  const breakGltf=await motionLoader.loadAsync(idleBreakMotionUrl);
+  if(token!==motionToken||vrm!==target) return;
+  const breakAnim=breakGltf.userData.vrmAnimations?.[0];
+  if(!breakAnim) throw new Error('VRMA break animation not found');
   idleBreakClip=createVRMAnimationClip(breakAnim, target);
 }
 const loader=new GLTFLoader();
@@ -435,9 +491,12 @@ async function loadVrm(url, revoke=false){
     clearHeldStop();
     idleExit=null;
     stanceApplied=false;
+    sceneReady=false;
+    followReady=false;
     vrm=gltf.userData.vrm;
     if(!vrm)throw new Error('VRM model not found');
     VRMUtils.rotateVRM0(vrm);
+    vrm.scene.visible=false;
     vrm.scene.traverse((obj)=>{ if(obj.isMesh){ obj.castShadow=true; obj.receiveShadow=true; } });
     scene.add(vrm.scene);
     initializeRetarget();
@@ -445,7 +504,8 @@ async function loadVrm(url, revoke=false){
       console.error(err);
       lastError=`Idle motion failed to load: ${err.message}`;
     });
-    status.textContent='ロゼを読み込みました。地面をクリックすると移動します。';
+    status.textContent='ロゼを読み込みました。位置同期を待っています…';
+    tryRevealCharacter();
   }catch(err){status.textContent=`VRMエラー: ${err.message}`}
   finally{if(revoke) URL.revokeObjectURL(url)}
 }
@@ -456,6 +516,7 @@ document.querySelector('#vrmFile').addEventListener('change',e=>{
 });
 loadVrm('http://127.0.0.1:8765/roze.vrm');
 function chooseSpawn(built){
+  // spots / openSpot は乱数を使わないため、同じキットならリロード後も同じ点になる。
   const spots=built.spots(12);
   const dining=spots.find((p)=>/encaustic|timber/.test(built.surfaceAt(p.x, p.z) || ''));
   return dining || spots[0] || built.openSpot() || built.bounds.getCenter(new THREE.Vector3());
@@ -468,6 +529,7 @@ async function loadCafe(){
       onProgress:(done,total)=>{ placeNote=`カフェの部品 ${done}/${total}`; },
     });
     spawn=chooseSpawn(place);
+    console.log('cafe spawn', {x:spawn.x, z:spawn.z});
     scene.add(place.group);
     const size=place.bounds.getSize(new THREE.Vector3());
     const center=place.bounds.getCenter(new THREE.Vector3());
@@ -486,6 +548,7 @@ async function loadCafe(){
     controls.update();
     addUsecaseMarkers();
     placeNote='Modern Restaurant Cafe';
+    tryRevealCharacter();
   }catch(err){
     placeNote=`カフェ読込エラー: ${err.message}`;
     console.error(err);
@@ -555,7 +618,7 @@ function markActive(id){
 }
 function sendArrival(usecase, x, z){
   markInput();
-  if(!socket||socket.readyState!==WebSocket.OPEN||!spawn){
+  if(!socket||socket.readyState!==WebSocket.OPEN||!spawn||!sceneReady){
     status.textContent='カフェかサーバーの準備ができていません。';
     return;
   }
@@ -587,7 +650,11 @@ function connect(){
   socket.onopen=()=>{status.textContent='接続済み。VRMを読み込んでください。'};
   socket.onmessage=(e)=>{
     const msg=JSON.parse(e.data);
-    if(msg.type==='rig'){rig=msg;initializeRetarget()}
+    if(msg.type==='rig'){
+      rig=msg;
+      initializeRetarget();
+      tryRevealCharacter();
+    }
     if(msg.type==='frame'){
       if(msg.phase){
         motionPhase=msg.phase;
@@ -605,6 +672,7 @@ function connect(){
       owner=reduced;
       if(clickAt){clickLatency=performance.now()-clickAt; clickAt=0}
       if(Number.isFinite(msg.generate_ms)) generateMs=msg.generate_ms;
+      tryRevealCharacter();
     }
     if(msg.type==='metrics' && Number.isFinite(msg.generate_ms)) generateMs=msg.generate_ms;
     if(msg.type==='decision'){
@@ -677,7 +745,7 @@ renderer.domElement.addEventListener('pointerdown',e=>{
   pointerDownAt={x:e.clientX,y:e.clientY};
 });
 renderer.domElement.addEventListener('pointerup',e=>{
-  if(e.button!==0||!pointerDownAt||!socket||socket.readyState!==WebSocket.OPEN||!spawn){
+  if(e.button!==0||!pointerDownAt||!socket||socket.readyState!==WebSocket.OPEN||!spawn||!sceneReady){
     pointerDownAt=null;
     return;
   }
@@ -709,21 +777,16 @@ window.addEventListener('resize',()=>{
 });
 const clock=new THREE.Clock();
 let statusT=0;
-const followTarget=new THREE.Vector3();
-const lastFollow=new THREE.Vector3();
-let followReady=false;
 function animate(){
   requestAnimationFrame(animate);
   const delta=Math.min(clock.getDelta(),.1);
   const blend=Math.min(1,(performance.now()-poseStamp)/(1000/60));
   const pose=currentPose?lerpPose(lastPose, currentPose, blend):null;
   if(vrm){
-    if(owner.capture && currentPose){
-      applyPose(currentPose);
-      adjustStance();
-      groundedIdle=new GroundedIdle(vrm);
-      owner={...owner, capture:false};
-      moveRequested=false;
+    if(!sceneReady){
+      tryRevealCharacter();
+    }else if(owner.capture && currentPose){
+      captureSettledIdle();
     }else if(owner.mode==='settled' && groundedIdle){
       groundedIdle.update(delta);
     }else{
@@ -760,13 +823,13 @@ function animate(){
         }
       }
     }
-    gaitDebug.update(gait, rig, spawn, FLOOR_TOP);
+    if(sceneReady) gaitDebug.update(gait, rig, spawn, FLOOR_TOP);
     vrm.update(delta);
   }
   if(place) place.tick(clock.elapsedTime);
-  if(vrm && look) look.follow(vrm.scene);
+  if(vrm && look && sceneReady) look.follow(vrm.scene);
   look?.update();
-  if(vrm){
+  if(vrm && sceneReady){
     const feet=vrm.scene.position;
     followTarget.set(feet.x, feet.y+lookHeight, feet.z);
     // 手動の回転・ズーム・パンは維持し、ロゼの移動分だけ視点を平行移動する。
@@ -794,8 +857,16 @@ function animate(){
     statusT=0;
     const readout=document.querySelector('#gaitReadout');
     if(readout) readout.textContent=formatGaitStatus(gait);
+    const bootNote=sceneReady?'表示準備完了':[
+      spawn?'spawn確定':'spawn待ち',
+      vrm?'VRM済':'VRM待ち',
+      rig?'骨格済':'骨格待ち',
+      currentPose?'姿勢済':'姿勢待ち',
+      restSourceWorld.length?'変換済':'変換待ち',
+    ].join(' / ');
     status.textContent=[placeNote, socket?.readyState===1?'MotionBricks 接続中':'サーバー未接続',
       vrm?'ロゼVRM 読み込み済み':'ロゼVRM 未読み込み',
+      bootNote,
       exitBlend?'待機から歩行へ':handoff?.active?`待機 ${handoffClip}.vrma`:'',
       formatGaitStatus(gait),
       `表示 ${fps.toFixed(0)} fps`,
