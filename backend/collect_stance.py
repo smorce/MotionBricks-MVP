@@ -1,6 +1,7 @@
 ﻿"""収束目標と、表示前のモーション品質検証。独自 IK は使用しない。"""
 import numpy as np
 from soma_pose import overlay_pose
+from quats import quat_mul
 from step_cycle import foot_points, facing_of, fk
 from soma_skeleton import SOMA_JOINT_NAMES, soma_parents
 
@@ -38,6 +39,23 @@ def knees_valid(pose, parents, names):
     return True
 
 
+def knees_continuous(pose, original, parents, names):
+    current, _ = fk(pose, parents)
+    initial, _ = fk(original, parents)
+    for side in ('Left', 'Right'):
+        def bend(points):
+            hip, knee, ankle = [points[names.index(side + part)] for part in ('Leg', 'Shin', 'Foot')]
+            axis = ankle - hip
+            if np.dot(axis, axis) < 1e-8:
+                return np.zeros(3)
+            offset = knee - hip
+            return offset - axis * np.dot(offset, axis) / np.dot(axis, axis)
+        a, b = bend(initial), bend(current)
+        if np.linalg.norm(a) > .01 and np.linalg.norm(b) > .01 and np.dot(a, b) < 0:
+            return False
+    return True
+
+
 def build_collect_target(settled, joint_names, swing, parents=None):
     base = np.asarray(settled, dtype=float)
     if swing not in ('left', 'right') or not valid_pose(base):
@@ -56,7 +74,7 @@ def build_collect_target(settled, joint_names, swing, parents=None):
             return None
         i = joint_names.index(name)
         target[i, 3:] = reference[i][3:]
-    if not valid_pose(target) or not knees_valid(target, parents, joint_names):
+    if not valid_pose(target) or not knees_valid(target, parents, joint_names) or not knees_continuous(target, base, parents, joint_names):
         return None
     before = stance(base, parents, joint_names)
     after = stance(target, parents, joint_names)
@@ -70,6 +88,25 @@ def build_collect_target(settled, joint_names, swing, parents=None):
         if abs(b[swing][part][2] - a[support][part][2]) > .04:
             return None
     return target
+
+
+def build_collect_lift(settled, parents, names, swing):
+    """支持足を動かさず、遊脚の回転だけで中間目標を探す。"""
+    points = foot_points(settled, parents, names)
+    joint = names.index(swing.title() + "Leg")
+    _, world_rot = fk(settled, parents)
+    axis_world = np.cross([0, 0, 1], facing_of(settled[0, 3:]))
+    parent = parents[joint]
+    axis = world_rot[parent].T @ axis_world if parent >= 0 else axis_world
+    for degrees in (20, -20, 35, -35, 50, -50):
+        angle = np.deg2rad(degrees) / 2
+        rotation = np.r_[axis * np.sin(angle), np.cos(angle)]
+        candidate = settled.copy()
+        candidate[joint, 3:] = quat_mul(rotation, settled[joint, 3:])
+        lifted = foot_points(candidate, parents, names)
+        if knees_valid(candidate, parents, names) and min(lifted[swing][part][2] - points[swing][part][2] for part in ('ankle', 'toe')) >= .04:
+            return candidate
+    return None
 
 
 def validate_motion(frames, original, parents, names, swing, slip_limit=SUPPORT_SLIP_M):
@@ -97,7 +134,7 @@ def validate_motion(frames, original, parents, names, swing, slip_limit=SUPPORT_
         result['reason'] = 'Bone lengths changed'
     elif any(np.max(2 * np.arccos(np.clip(np.abs(np.sum(p[:, 3:] * q[:, 3:], axis=1)), 0, 1))) > .35 for p, q in zip(frames, frames[1:])):
         result['reason'] = 'Joint rotation discontinuity'
-    elif not all(knees_valid(p, parents, names) for p in frames):
+    elif not all(knees_valid(p, parents, names) and knees_continuous(p, original, parents, names) for p in frames):
         result['reason'] = 'Invalid knee bend'
     elif any(p[side][part][2] < start[side][part][2] - .02 for p in points for side in ('left', 'right') for part in ('ankle', 'toe')):
         result['reason'] = 'Foot penetrated ground'

@@ -102,6 +102,8 @@ class LocomotionCycle:
         self.collect_metrics = {}
         self.collect_frames = []
         self.collect_index = 0
+        self.collect_review = None
+        self.collect_started_s = None
         self.budget = 0.0
         self.walk_primed = False
         self.plants = PlantState()
@@ -140,6 +142,8 @@ class LocomotionCycle:
         self.collect_metrics = {}
         self.collect_frames = []
         self.collect_index = 0
+        self.collect_review = None
+        self.collect_started_s = None
         self.budget = 0.0
         self.walk_primed = False
         self.plants = PlantState()
@@ -152,6 +156,30 @@ class LocomotionCycle:
             return False
         self.upper_idle_ready = True
         return True
+
+    def stage_collect(self, frames, metrics, move_id, settle_seq):
+        if self.phase != COLLECT_PREPARING or move_id != self.move_id or settle_seq != self.settle_seq:
+            return False
+        if frames is None or not metrics.get("accepted"):
+            self.note_collect(None, metrics, move_id, settle_seq)
+            return False
+        self.collect_review = (frames, metrics, self.clock)
+        return True
+
+    def note_collect_review(self, accepted, metrics, move_id, settle_seq):
+        if self.phase != COLLECT_PREPARING or self.collect_review is None or move_id != self.move_id or settle_seq != self.settle_seq:
+            return False
+        frames, soma_metrics, _ = self.collect_review
+        self.collect_review = None
+        combined = {**soma_metrics, "vrm": metrics, "accepted": accepted is True}
+        if accepted is not True:
+            combined["reason"] = metrics.get("reason", "VRM validation failed")
+        self.note_collect(frames if accepted is True else None, combined, move_id, settle_seq)
+        return True
+
+    def expire_collect_review(self):
+        if self.collect_review is not None and self.clock - self.collect_review[2] >= 5:
+            self.note_collect_review(False, {"reason": "VRM validation timed out"}, self.move_id, self.settle_seq)
 
     def note_collect(self, frames, metrics, move_id, settle_seq):
         if self.phase != COLLECT_PREPARING or move_id != self.move_id or settle_seq != self.settle_seq:
@@ -186,6 +214,10 @@ class LocomotionCycle:
         dt = float(obs.get("dt") or self._dt)
         self._dt = dt
         self.clock += dt
+        self.expire_collect_review()
+        if self.phase == COLLECT_PREPARING and self.collect_started_s is not None and self.clock - self.collect_started_s >= 15:
+            self.collect_review = None
+            self.note_collect(None, {"accepted": False, "reason": "Collect preparation timed out"}, self.move_id, self.settle_seq)
         self._event = ""
         pose = np.asarray(obs["pose"], dtype=np.float64)
         parents = obs.get("parents") or self.parents
@@ -329,6 +361,7 @@ class LocomotionCycle:
                     self.collect_attempted = True
                     self.collect_original_pose = shown.copy()
                     self.phase = COLLECT_PREPARING
+                    self.collect_started_s = self.clock
                     action = self._action(shown, pose_out=shown, seed=seed, obs=obs)
                     action.begin_collect = True
                     return action

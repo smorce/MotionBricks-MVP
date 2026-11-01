@@ -13,6 +13,8 @@ import os
 import sys
 import time
 from dataclasses import replace
+from concurrent.futures import ThreadPoolExecutor
+from threading import Event
 from pathlib import Path
 from queue import Empty, Queue
 
@@ -21,7 +23,7 @@ import numpy as np
 from locomotion_cycle import IDLE, LocomotionCycle, POSE_DONE, SETTLED
 from quats import RX90, quat_mul, quat_to_mat
 from soma_pose import overlay_pose
-from collect_stance import build_collect_target, validate_motion
+from collect_stance import build_collect_target, build_collect_lift, validate_motion
 from step_cycle import choose_swing, foot_points
 from stop_phase import NavState, apply_nav_command
 
@@ -167,7 +169,7 @@ def _enter_arrival(character, planted, pose_id: str, rt, wp, facing: np.ndarray)
     return _request_custom_pose(character, pose_id, rt)
 
 
-def _begin_collect(character, planted, swing, rt, wp, facing):
+def _begin_collect(character, planted, swing, rt, wp, facing, cancelled=None):
     """独立キャラクターで全フレームを検証し、ライブ再生器には触れない。"""
     names = list(character.skeleton.joint_names)
     parents = [character.skeleton.joint_parent(i) for i in range(len(names))]
@@ -197,19 +199,53 @@ def _begin_collect(character, planted, swing, rt, wp, facing):
     if any(not np.allclose(a[part], b[part], atol=1e-5) for part in ('ankle', 'toe')):
         return None, dict(accepted=False, reason="Target placement changed support foot")
     mask = rt["IKPin"].RIGHT_FOOT if swing == 'left' else rt["IKPin"].LEFT_FOOT
-    scratch.generate_to_target_poses(target, rt["TargetPoseInferenceParams"](
-        transition_early_by_frames=0, num_poses_to_use=1, ik_pin_mask=mask))
-    frames = [planted.copy()]
-    for _ in range(int(4 / DT)):
-        # 状態機械による Idle 再生成を避け、公式の生成再生と IK Pin のみを進める。
-        scratch._sample_playback(DT)
-        frames.append(scratch.current_pose.numpy().reshape((-1, 7)).copy())
-        if scratch.time_to_transition() <= 0:
-            break
-    else:
-        return None, dict(accepted=False, reason="Collect playback timed out")
+    if cancelled is not None and cancelled.is_set():
+        return None, dict(accepted=False, reason="Collect cancelled")
+    params = rt["TargetPoseInferenceParams"](transition_early_by_frames=0, num_poses_to_use=1, ik_pin_mask=mask)
+
+    def generate_segment(goal):
+        scratch.generate_to_target_poses(goal, params)
+        segment = []
+        for _ in range(int(4 / DT)):
+            if cancelled is not None and cancelled.is_set():
+                raise RuntimeError("Collect cancelled")
+            scratch._sample_playback(DT)
+            segment.append(scratch.current_pose.numpy().reshape((-1, 7)).copy())
+            scratch.player.record_pose(DT, scratch.current_pose)
+            if scratch.time_to_transition() <= 0:
+                return segment
+        raise RuntimeError("Collect playback timed out")
+
+    frames = [planted.copy(), *generate_segment(target)]
     metrics = validate_motion(frames, planted, parents, names, swing)
+    metrics["stages"] = 1
+    if metrics.get("lift_m", 0) < .025 and metrics.get("reason") in ("Swing foot did not lift", "Support foot slip exceeds limit"):
+        intermediate = build_collect_lift(planted, parents, names, swing)
+        if intermediate is not None:
+            _sync_pose(scratch, planted, wp, seed=True)
+            lift_target = wp.array(np.repeat(intermediate[None].astype(np.float32), rt["MODEL_POSES_PER_TOKEN"], axis=0),
+                                   dtype=wp.transform, device=character.engine.device)
+            frames = [planted.copy(), *generate_segment(lift_target), *generate_segment(target)]
+            metrics = validate_motion(frames, planted, parents, names, swing)
+            metrics["stages"] = 2
+    metrics["swing"] = swing
     return (frames if metrics['accepted'] else None), metrics
+
+
+
+def _collect_job(planted, swing, facing, cancelled):
+    """推論専用エンジンを使い、ライブ歩行とGPU状態を共有しない。"""
+    rt = _load_runtime()
+    wp = rt["wp"]
+    wp.init()
+    wp.set_device("cuda:0")
+    assets = rt["load_rig_assets"](rt["ModelRig"].SOMA)
+    pool = rt["SmartPrimitiveAssetPool"](assets.clip_registry, assets.reference_pose, assets.model_to_runtime)
+    engine = rt["MotionBricksSOMAEngine"](rt["SOMA_N1_FP32_ONNX_PATH"], model_to_runtime=assets.model_to_runtime)
+    with engine, wp.ScopedStream(engine.stream):
+        character = rt["SOMACharacter"](engine, asset_pool=pool, modes=rt["DEFAULT_LOCOMOTION_MODES"],
+            idle_paths=(rt["DEFAULT_IDLE_CLIPS"][0],), crouch_idle_paths=rt["DEFAULT_CROUCH_IDLE_CLIPS"])
+        return _begin_collect(character, planted, swing, rt, wp, facing, cancelled)
 
 
 def _drain(commands: Queue, nav: NavState, cycle=None):
@@ -221,6 +257,9 @@ def _drain(commands: Queue, nav: NavState, cycle=None):
             return nav, goal
         if cmd.get("type") == "upper_idle_ready" and cycle is not None:
             cycle.note_upper_idle_ready(cmd.get("move_id"), cmd.get("settle_seq"))
+        if cmd.get("type") == "collect_review" and cycle is not None:
+            metrics = cmd.get("metrics")
+            cycle.note_collect_review(cmd.get("accepted") is True, metrics if isinstance(metrics, dict) else {}, cmd.get("move_id"), cmd.get("settle_seq"))
         result = apply_nav_command(nav, cmd)
         if result.quit:
             return None
@@ -288,16 +327,41 @@ def worker(commands: Queue, publish):
         report_at = time.monotonic()
         next_tick = time.monotonic()
         last_root = None
+        collect_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="collect-gpu")
+        collect_job = None
+        collect_cancel = Event()
         while True:
             drained = _drain(commands, nav, cycle)
             if drained is None:
+                collect_cancel.set()
+                collect_executor.shutdown(wait=False, cancel_futures=True)
                 return
             nav, moved = drained
             if moved is not None:
+                collect_cancel.set()
+                if collect_job is not None:
+                    collect_job[0].cancel()
+                    collect_job = None
                 goal = moved
                 cycle.begin_move(moved, nav.hold_stance, nav.move_id)
             if not nav.hold_stance and nav.target_pose_id != cycle.target_pose_id:
                 cycle.note_pose_choice(nav.target_pose_id)
+            if collect_job is not None and cycle.phase != "collect_preparing":
+                collect_cancel.set()
+                collect_job[0].cancel()
+                collect_job = None
+            if collect_job is not None and collect_job[0].done():
+                future, move_id, settle_seq = collect_job
+                collect_job = None
+                try:
+                    collect_frames, metrics = future.result()
+                except Exception as exc:
+                    collect_frames, metrics = None, dict(accepted=False, reason=f"Collect generation failed: {exc}")
+                if cycle.stage_collect(collect_frames, metrics, move_id, settle_seq):
+                    publish({"type": "collect_candidate", "move_id": move_id, "settle_seq": settle_seq,
+                             "frames": [frame.tolist() for frame in collect_frames], "metrics": metrics})
+                elif metrics.get("reason"):
+                    print(f"Collect rejected: {metrics['reason']}", flush=True)
             pose = character.current_pose.numpy().reshape((-1, 7)).copy()
             playback = character._playback_source.name
             contacts_available = playback != "CLIP" and cycle.phase in (IDLE, "moving", "decelerating")
@@ -328,13 +392,8 @@ def worker(commands: Queue, publish):
                 feet = foot_points(planted, parents, names)
                 swing = choose_swing(feet['left']['ankle'], feet['right']['ankle'], facing,
                                      feet['left']['ankle'][2], feet['right']['ankle'][2])
-                try:
-                    collect_frames, metrics = _begin_collect(character, planted, swing, rt, wp, facing)
-                except Exception as exc:
-                    collect_frames, metrics = None, dict(accepted=False, reason=f"Collect generation failed: {exc}")
-                cycle.note_collect(collect_frames, metrics, cycle.move_id, cycle.settle_seq)
-                if not metrics.get('accepted'):
-                    print(f"Collect rejected: {metrics.get('reason')}", flush=True)
+                collect_cancel = Event()
+                collect_job = (collect_executor.submit(_collect_job, planted.copy(), swing, facing.copy(), collect_cancel), cycle.move_id, cycle.settle_seq)
             elif action.begin_arrival:
                 planted = action.pose if action.pose is not None else pose
                 try:

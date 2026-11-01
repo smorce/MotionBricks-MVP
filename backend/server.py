@@ -150,6 +150,8 @@ async def ws_endpoint(ws: WebSocket):
     try:
         while True:
             msg = await ws.receive_json()
+            if msg.get('type') == 'collect_review':
+                commands.put({name: msg.get(name) for name in ('type', 'move_id', 'settle_seq', 'accepted', 'metrics')})
             if msg.get('type') == 'upper_idle_ready':
                 commands.put({name: msg.get(name) for name in ('type', 'move_id', 'settle_seq')})
             if msg.get('type') == 'move':

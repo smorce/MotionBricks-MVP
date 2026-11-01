@@ -1,3 +1,4 @@
+import {preflightCollect} from './collectValidation.js';
 import * as THREE from 'three';
 import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
@@ -317,6 +318,7 @@ function releaseVrmaIdle(){
 let groundedIdle=null;
 let idleReadySent=null;
 let collectBlendStarted=null;
+let collectFinalUpper=null;
 let idleExit=null;
 const followTarget=new THREE.Vector3();
 const lastFollow=new THREE.Vector3();
@@ -347,6 +349,10 @@ function captureSettledIdle(){
   if(!vrm||!currentPose) return;
   applyPose(currentPose);
   adjustStance();
+  if(collectFinalUpper){
+    for(const bone of collectFinalUpper) bone.node.quaternion.copy(bone.q);
+    collectFinalUpper=null;
+  }
   groundedIdle=new GroundedIdle(vrm, {
     idleClip,
     fadeSeconds:IDLE_FADE_SEC,
@@ -382,6 +388,47 @@ function restoreCharacterPose(held){
     item.node.quaternion.copy(item.quaternion);
     item.node.position.copy(item.position);
   }
+}
+function sampleVrmCollect(){
+  vrm.humanoid.update();
+  vrm.scene.updateMatrixWorld(true);
+  const point=name=>{
+    const node=vrm.humanoid.getRawBoneNode(name);
+    if(!node) throw new Error(`VRM validation bone missing: ${name}`);
+    return node.getWorldPosition(new THREE.Vector3()).toArray();
+  };
+  const sample={root:vrm.scene.getWorldPosition(new THREE.Vector3()).toArray()};
+  for(const side of ['left','right']){
+    sample[side]={hip:point(`${side}UpperLeg`),knee:point(`${side}LowerLeg`),foot:point(`${side}Foot`),toe:point(`${side}Toes`)};
+  }
+  return sample;
+}
+function reviewCollect(msg){
+  if(msg.move_id!==owner.moveId||msg.settle_seq!==owner.settleSeq||owner.mode!=='collect_preparing') return;
+  let metrics={accepted:false,reason:'VRM is not ready'};
+  if(vrm&&sceneReady&&rig&&groundedIdle){
+    const previousStance=stanceApplied;
+    try{
+      metrics=preflightCollect(msg.frames,{
+        capture:()=>{
+          const held=captureCharacterPose();
+          const seen=new Set(held.map(item=>item.node));
+          vrm.humanoid.normalizedHumanBonesRoot.traverse(node=>{
+            if(!seen.has(node)) held.push({node,quaternion:node.quaternion.clone(),position:node.position.clone()});
+          });
+          return held;
+        },
+        restore:held=>{restoreCharacterPose(held);vrm.scene.updateMatrixWorld(true);},
+        apply:frame=>{applyPose(frame);adjustStance();},
+        sample:sampleVrmCollect,
+      },msg.metrics?.swing);
+    }catch(error){
+      metrics={accepted:false,reason:`VRM validation failed: ${error.message}`};
+    }finally{
+      stanceApplied=previousStance;
+    }
+  }
+  socket.send(JSON.stringify({type:'collect_review',move_id:msg.move_id,settle_seq:msg.settle_seq,accepted:metrics.accepted,metrics}));
 }
 function undoStance(){
   if(!vrm||!stanceApplied) return;
@@ -657,6 +704,7 @@ function connect(){
       initializeRetarget();
       tryRevealCharacter();
     }
+    if(msg.type==='collect_candidate') reviewCollect(msg);
     if(msg.type==='frame'){
       if(owner.seenMove!=null && msg.gait?.move_id!=null && msg.gait.move_id<owner.seenMove) return;
       if(msg.gait?.move_id===owner.moveId && msg.gait?.settle_seq<owner.settleSeq) return;
@@ -679,6 +727,9 @@ function connect(){
         settleSeq: msg.gait?.settle_seq ?? owner.settleSeq,
       });
       if(reduced===owner) return;
+      if(reduced.capture && owner.mode==='collecting' && groundedIdle){
+        collectFinalUpper=groundedIdle.upper.map(bone=>({node:bone.node,q:bone.node.quaternion.clone()}));
+      }
       if(reduced.mode==='collecting' && owner.mode!=='collecting'){
         groundedIdle?.captureUpper();
         collectBlendStarted=performance.now();
