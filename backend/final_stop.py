@@ -169,4 +169,11 @@ def validate_stop_motion(frames, original, goal, parents, names, ground):
         result['reason'] = 'Stop final feet are unstable'
     else:
         result.update(accepted=True, reason='')
+    from stop_diagnostics import diagnose_stop
+    result['checks'] = diagnose_stop(frames, original, goal, parents, names, calibration, result)
+    result['failures'] = [name for name, check in result['checks'].items() if not check['passed']]
+    if result['failures']:
+        result['accepted'] = False
+        if not result['reason']:
+            result['reason'] = 'Stop diagnostic failed: ' + ', '.join(result['failures'])
     return result

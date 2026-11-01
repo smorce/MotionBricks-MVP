@@ -252,6 +252,15 @@ def _begin_final_stop(character, pose, goal, rt, wp, destination=None, *, ground
     """歩行履歴から公式生成し、表示する前に停止区間全体を検証する。"""
     names = list(character.skeleton.joint_names)
     parents = [character.skeleton.joint_parent(i) for i in range(len(names))]
+    replay_directory = os.environ.get('MOTIONBRICKS_STOP_REPLAY_DIR')
+    if replay_directory:
+        from stop_replay import save_replay
+        recorder = character.player.motion_history
+        save_replay(Path(replay_directory) / f'stop-{time.time_ns()}.json',
+                    pose=pose, history=recorder.poses.numpy(), delta_times=recorder.delta_times,
+                    metadata=dict(goal=np.asarray(goal).tolist(), parents=parents, names=names,
+                                  ground=ground, support=stop_support(pose, goal, parents, names),
+                                  replay_scope='History capture only; GPU RNG and VRM mapping not captured'))
     target_pose = build_stop_target(pose, goal, parents, names, ground)
     if target_pose is None:
         return None, dict(accepted=False, stage='target', reason='No safe final stop target')

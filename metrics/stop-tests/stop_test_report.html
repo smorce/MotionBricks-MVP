@@ -1,0 +1,1164 @@
+<!doctype html><meta charset="utf-8"><title>停止診断</title><style>body{font:16px sans-serif;margin:32px}td{vertical-align:top;padding:12px;border:1px solid #ccc}pre{white-space:pre-wrap}</style><h1>停止診断</h1><p>合成姿勢3ケースの診断回帰結果。実モデル候補探索、12歩行条件、VRM動作品質は未検証。</p><table><tr><th>ケース</th><th>採用可否</th><th>測定結果</th></tr><tr><td>stationary</td><td>True</td><td><pre>{
+  &quot;accepted&quot;: true,
+  &quot;reason&quot;: &quot;&quot;,
+  &quot;bone_lengths_valid&quot;: true,
+  &quot;max_bone_length_error_m&quot;: 0.0,
+  &quot;bone_length_atol_m&quot;: 0.002,
+  &quot;bone_length_rtol&quot;: 0.01,
+  &quot;bone_length_diagnostics&quot;: [
+    {
+      &quot;joint&quot;: &quot;Spine1&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.002
+    },
+    {
+      &quot;joint&quot;: &quot;Spine2&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.002
+    },
+    {
+      &quot;joint&quot;: &quot;Chest&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.002
+    },
+    {
+      &quot;joint&quot;: &quot;Neck1&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.002
+    },
+    {
+      &quot;joint&quot;: &quot;Neck2&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.002
+    },
+    {
+      &quot;joint&quot;: &quot;Head&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.002
+    },
+    {
+      &quot;joint&quot;: &quot;Jaw&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.002
+    },
+    {
+      &quot;joint&quot;: &quot;LeftEye&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.002
+    },
+    {
+      &quot;joint&quot;: &quot;RightEye&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.002
+    },
+    {
+      &quot;joint&quot;: &quot;LeftShoulder&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.002
+    },
+    {
+      &quot;joint&quot;: &quot;LeftArm&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.002
+    },
+    {
+      &quot;joint&quot;: &quot;LeftForeArm&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.002
+    },
+    {
+      &quot;joint&quot;: &quot;LeftHand&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.002
+    },
+    {
+      &quot;joint&quot;: &quot;LeftHandThumbEnd&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.002
+    },
+    {
+      &quot;joint&quot;: &quot;LeftHandMiddleEnd&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.002
+    },
+    {
+      &quot;joint&quot;: &quot;RightShoulder&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.002
+    },
+    {
+      &quot;joint&quot;: &quot;RightArm&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.002
+    },
+    {
+      &quot;joint&quot;: &quot;RightForeArm&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.002
+    },
+    {
+      &quot;joint&quot;: &quot;RightHand&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.002
+    },
+    {
+      &quot;joint&quot;: &quot;RightHandThumbEnd&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.002
+    },
+    {
+      &quot;joint&quot;: &quot;RightHandMiddleEnd&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.002
+    },
+    {
+      &quot;joint&quot;: &quot;LeftLeg&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.0033
+    },
+    {
+      &quot;joint&quot;: &quot;LeftShin&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.0055608987629529715
+    },
+    {
+      &quot;joint&quot;: &quot;LeftFoot&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.005577708763999664
+    },
+    {
+      &quot;joint&quot;: &quot;LeftToeBase&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.0028246211251235324
+    },
+    {
+      &quot;joint&quot;: &quot;RightLeg&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.0033
+    },
+    {
+      &quot;joint&quot;: &quot;RightShin&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.0055608987629529715
+    },
+    {
+      &quot;joint&quot;: &quot;RightFoot&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.005577708763999664
+    },
+    {
+      &quot;joint&quot;: &quot;RightToeBase&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.0028246211251235324
+    }
+  ],
+  &quot;ground_world_z&quot;: 0.0,
+  &quot;arrival_error_m&quot;: 0.0,
+  &quot;checks&quot;: {
+    &quot;bones&quot;: {
+      &quot;passed&quot;: true,
+      &quot;frames&quot;: [],
+      &quot;max_error_m&quot;: 0.0
+    },
+    &quot;knees&quot;: {
+      &quot;passed&quot;: true,
+      &quot;frames&quot;: [],
+      &quot;angles_deg&quot;: [
+        {
+          &quot;left&quot;: 64.72227776444704,
+          &quot;right&quot;: 64.72227776444704
+        },
+        {
+          &quot;left&quot;: 64.72227776444704,
+          &quot;right&quot;: 64.72227776444704
+        },
+        {
+          &quot;left&quot;: 64.72227776444704,
+          &quot;right&quot;: 64.72227776444704
+        },
+        {
+          &quot;left&quot;: 64.72227776444704,
+          &quot;right&quot;: 64.72227776444704
+        },
+        {
+          &quot;left&quot;: 64.72227776444704,
+          &quot;right&quot;: 64.72227776444704
+        },
+        {
+          &quot;left&quot;: 64.72227776444704,
+          &quot;right&quot;: 64.72227776444704
+        },
+        {
+          &quot;left&quot;: 64.72227776444704,
+          &quot;right&quot;: 64.72227776444704
+        },
+        {
+          &quot;left&quot;: 64.72227776444704,
+          &quot;right&quot;: 64.72227776444704
+        }
+      ]
+    },
+    &quot;ankles&quot;: {
+      &quot;passed&quot;: true,
+      &quot;frames&quot;: [],
+      &quot;max_joint_delta_rad&quot;: 0.0
+    },
+    &quot;feet&quot;: {
+      &quot;passed&quot;: true,
+      &quot;frames&quot;: [],
+      &quot;heights_m&quot;: [
+        {
+          &quot;left&quot;: {
+            &quot;ankle&quot;: 0.0,
+            &quot;toe&quot;: 0.0
+          },
+          &quot;right&quot;: {
+            &quot;ankle&quot;: 0.0,
+            &quot;toe&quot;: 0.0
+          }
+        },
+        {
+          &quot;left&quot;: {
+            &quot;ankle&quot;: 0.0,
+            &quot;toe&quot;: 0.0
+          },
+          &quot;right&quot;: {
+            &quot;ankle&quot;: 0.0,
+            &quot;toe&quot;: 0.0
+          }
+        },
+        {
+          &quot;left&quot;: {
+            &quot;ankle&quot;: 0.0,
+            &quot;toe&quot;: 0.0
+          },
+          &quot;right&quot;: {
+            &quot;ankle&quot;: 0.0,
+            &quot;toe&quot;: 0.0
+          }
+        },
+        {
+          &quot;left&quot;: {
+            &quot;ankle&quot;: 0.0,
+            &quot;toe&quot;: 0.0
+          },
+          &quot;right&quot;: {
+            &quot;ankle&quot;: 0.0,
+            &quot;toe&quot;: 0.0
+          }
+        },
+        {
+          &quot;left&quot;: {
+            &quot;ankle&quot;: 0.0,
+            &quot;toe&quot;: 0.0
+          },
+          &quot;right&quot;: {
+            &quot;ankle&quot;: 0.0,
+            &quot;toe&quot;: 0.0
+          }
+        },
+        {
+          &quot;left&quot;: {
+            &quot;ankle&quot;: 0.0,
+            &quot;toe&quot;: 0.0
+          },
+          &quot;right&quot;: {
+            &quot;ankle&quot;: 0.0,
+            &quot;toe&quot;: 0.0
+          }
+        },
+        {
+          &quot;left&quot;: {
+            &quot;ankle&quot;: 0.0,
+            &quot;toe&quot;: 0.0
+          },
+          &quot;right&quot;: {
+            &quot;ankle&quot;: 0.0,
+            &quot;toe&quot;: 0.0
+          }
+        },
+        {
+          &quot;left&quot;: {
+            &quot;ankle&quot;: 0.0,
+            &quot;toe&quot;: 0.0
+          },
+          &quot;right&quot;: {
+            &quot;ankle&quot;: 0.0,
+            &quot;toe&quot;: 0.0
+          }
+        }
+      ]
+    },
+    &quot;support&quot;: {
+      &quot;passed&quot;: true,
+      &quot;frames&quot;: [],
+      &quot;max_slip_m&quot;: 0.0
+    },
+    &quot;swing&quot;: {
+      &quot;passed&quot;: true,
+      &quot;frames&quot;: [],
+      &quot;landed&quot;: true
+    },
+    &quot;root&quot;: {
+      &quot;passed&quot;: true,
+      &quot;frames&quot;: [],
+      &quot;max_step_m&quot;: 0.0
+    },
+    &quot;destination&quot;: {
+      &quot;passed&quot;: true,
+      &quot;frames&quot;: [],
+      &quot;error_m&quot;: 0.0
+    },
+    &quot;idle&quot;: {
+      &quot;passed&quot;: true,
+      &quot;frames&quot;: [],
+      &quot;stance_m&quot;: [
+        0.0,
+        0.24
+      ],
+      &quot;scope&quot;: &quot;Terminal stability; separate Idle transition not measured&quot;
+    }
+  },
+  &quot;failures&quot;: []
+}</pre></td></tr><tr><td>missed-destination</td><td>False</td><td><pre>{
+  &quot;accepted&quot;: false,
+  &quot;reason&quot;: &quot;Stop missed destination&quot;,
+  &quot;bone_lengths_valid&quot;: true,
+  &quot;max_bone_length_error_m&quot;: 0.0,
+  &quot;bone_length_atol_m&quot;: 0.002,
+  &quot;bone_length_rtol&quot;: 0.01,
+  &quot;bone_length_diagnostics&quot;: [
+    {
+      &quot;joint&quot;: &quot;Spine1&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.002
+    },
+    {
+      &quot;joint&quot;: &quot;Spine2&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.002
+    },
+    {
+      &quot;joint&quot;: &quot;Chest&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.002
+    },
+    {
+      &quot;joint&quot;: &quot;Neck1&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.002
+    },
+    {
+      &quot;joint&quot;: &quot;Neck2&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.002
+    },
+    {
+      &quot;joint&quot;: &quot;Head&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.002
+    },
+    {
+      &quot;joint&quot;: &quot;Jaw&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.002
+    },
+    {
+      &quot;joint&quot;: &quot;LeftEye&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.002
+    },
+    {
+      &quot;joint&quot;: &quot;RightEye&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.002
+    },
+    {
+      &quot;joint&quot;: &quot;LeftShoulder&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.002
+    },
+    {
+      &quot;joint&quot;: &quot;LeftArm&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.002
+    },
+    {
+      &quot;joint&quot;: &quot;LeftForeArm&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.002
+    },
+    {
+      &quot;joint&quot;: &quot;LeftHand&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.002
+    },
+    {
+      &quot;joint&quot;: &quot;LeftHandThumbEnd&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.002
+    },
+    {
+      &quot;joint&quot;: &quot;LeftHandMiddleEnd&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.002
+    },
+    {
+      &quot;joint&quot;: &quot;RightShoulder&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.002
+    },
+    {
+      &quot;joint&quot;: &quot;RightArm&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.002
+    },
+    {
+      &quot;joint&quot;: &quot;RightForeArm&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.002
+    },
+    {
+      &quot;joint&quot;: &quot;RightHand&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.002
+    },
+    {
+      &quot;joint&quot;: &quot;RightHandThumbEnd&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.002
+    },
+    {
+      &quot;joint&quot;: &quot;RightHandMiddleEnd&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.002
+    },
+    {
+      &quot;joint&quot;: &quot;LeftLeg&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.0033
+    },
+    {
+      &quot;joint&quot;: &quot;LeftShin&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.0055608987629529715
+    },
+    {
+      &quot;joint&quot;: &quot;LeftFoot&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.005577708763999664
+    },
+    {
+      &quot;joint&quot;: &quot;LeftToeBase&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.0028246211251235324
+    },
+    {
+      &quot;joint&quot;: &quot;RightLeg&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.0033
+    },
+    {
+      &quot;joint&quot;: &quot;RightShin&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.0055608987629529715
+    },
+    {
+      &quot;joint&quot;: &quot;RightFoot&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.005577708763999664
+    },
+    {
+      &quot;joint&quot;: &quot;RightToeBase&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.0028246211251235324
+    }
+  ],
+  &quot;ground_world_z&quot;: 0.0,
+  &quot;arrival_error_m&quot;: 1.0,
+  &quot;checks&quot;: {
+    &quot;bones&quot;: {
+      &quot;passed&quot;: true,
+      &quot;frames&quot;: [],
+      &quot;max_error_m&quot;: 0.0
+    },
+    &quot;knees&quot;: {
+      &quot;passed&quot;: true,
+      &quot;frames&quot;: [],
+      &quot;angles_deg&quot;: [
+        {
+          &quot;left&quot;: 64.72227776444704,
+          &quot;right&quot;: 64.72227776444704
+        },
+        {
+          &quot;left&quot;: 64.72227776444704,
+          &quot;right&quot;: 64.72227776444704
+        },
+        {
+          &quot;left&quot;: 64.72227776444704,
+          &quot;right&quot;: 64.72227776444704
+        },
+        {
+          &quot;left&quot;: 64.72227776444704,
+          &quot;right&quot;: 64.72227776444704
+        },
+        {
+          &quot;left&quot;: 64.72227776444704,
+          &quot;right&quot;: 64.72227776444704
+        },
+        {
+          &quot;left&quot;: 64.72227776444704,
+          &quot;right&quot;: 64.72227776444704
+        },
+        {
+          &quot;left&quot;: 64.72227776444704,
+          &quot;right&quot;: 64.72227776444704
+        },
+        {
+          &quot;left&quot;: 64.72227776444704,
+          &quot;right&quot;: 64.72227776444704
+        }
+      ]
+    },
+    &quot;ankles&quot;: {
+      &quot;passed&quot;: true,
+      &quot;frames&quot;: [],
+      &quot;max_joint_delta_rad&quot;: 0.0
+    },
+    &quot;feet&quot;: {
+      &quot;passed&quot;: true,
+      &quot;frames&quot;: [],
+      &quot;heights_m&quot;: [
+        {
+          &quot;left&quot;: {
+            &quot;ankle&quot;: 0.0,
+            &quot;toe&quot;: 0.0
+          },
+          &quot;right&quot;: {
+            &quot;ankle&quot;: 0.0,
+            &quot;toe&quot;: 0.0
+          }
+        },
+        {
+          &quot;left&quot;: {
+            &quot;ankle&quot;: 0.0,
+            &quot;toe&quot;: 0.0
+          },
+          &quot;right&quot;: {
+            &quot;ankle&quot;: 0.0,
+            &quot;toe&quot;: 0.0
+          }
+        },
+        {
+          &quot;left&quot;: {
+            &quot;ankle&quot;: 0.0,
+            &quot;toe&quot;: 0.0
+          },
+          &quot;right&quot;: {
+            &quot;ankle&quot;: 0.0,
+            &quot;toe&quot;: 0.0
+          }
+        },
+        {
+          &quot;left&quot;: {
+            &quot;ankle&quot;: 0.0,
+            &quot;toe&quot;: 0.0
+          },
+          &quot;right&quot;: {
+            &quot;ankle&quot;: 0.0,
+            &quot;toe&quot;: 0.0
+          }
+        },
+        {
+          &quot;left&quot;: {
+            &quot;ankle&quot;: 0.0,
+            &quot;toe&quot;: 0.0
+          },
+          &quot;right&quot;: {
+            &quot;ankle&quot;: 0.0,
+            &quot;toe&quot;: 0.0
+          }
+        },
+        {
+          &quot;left&quot;: {
+            &quot;ankle&quot;: 0.0,
+            &quot;toe&quot;: 0.0
+          },
+          &quot;right&quot;: {
+            &quot;ankle&quot;: 0.0,
+            &quot;toe&quot;: 0.0
+          }
+        },
+        {
+          &quot;left&quot;: {
+            &quot;ankle&quot;: 0.0,
+            &quot;toe&quot;: 0.0
+          },
+          &quot;right&quot;: {
+            &quot;ankle&quot;: 0.0,
+            &quot;toe&quot;: 0.0
+          }
+        },
+        {
+          &quot;left&quot;: {
+            &quot;ankle&quot;: 0.0,
+            &quot;toe&quot;: 0.0
+          },
+          &quot;right&quot;: {
+            &quot;ankle&quot;: 0.0,
+            &quot;toe&quot;: 0.0
+          }
+        }
+      ]
+    },
+    &quot;support&quot;: {
+      &quot;passed&quot;: true,
+      &quot;frames&quot;: [],
+      &quot;max_slip_m&quot;: 0.0
+    },
+    &quot;swing&quot;: {
+      &quot;passed&quot;: true,
+      &quot;frames&quot;: [],
+      &quot;landed&quot;: true
+    },
+    &quot;root&quot;: {
+      &quot;passed&quot;: true,
+      &quot;frames&quot;: [],
+      &quot;max_step_m&quot;: 0.0
+    },
+    &quot;destination&quot;: {
+      &quot;passed&quot;: false,
+      &quot;frames&quot;: [
+        7
+      ],
+      &quot;error_m&quot;: 1.0
+    },
+    &quot;idle&quot;: {
+      &quot;passed&quot;: true,
+      &quot;frames&quot;: [],
+      &quot;stance_m&quot;: [
+        0.0,
+        0.24
+      ],
+      &quot;scope&quot;: &quot;Terminal stability; separate Idle transition not measured&quot;
+    }
+  },
+  &quot;failures&quot;: [
+    &quot;destination&quot;
+  ]
+}</pre></td></tr><tr><td>root-and-bone-failure</td><td>False</td><td><pre>{
+  &quot;accepted&quot;: false,
+  &quot;reason&quot;: &quot;Stop missed destination&quot;,
+  &quot;bone_lengths_valid&quot;: false,
+  &quot;max_bone_length_error_m&quot;: 0.0986455902503951,
+  &quot;bone_length_atol_m&quot;: 0.002,
+  &quot;bone_length_rtol&quot;: 0.01,
+  &quot;bone_length_diagnostics&quot;: [
+    {
+      &quot;joint&quot;: &quot;Spine1&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.002
+    },
+    {
+      &quot;joint&quot;: &quot;Spine2&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.002
+    },
+    {
+      &quot;joint&quot;: &quot;Chest&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.002
+    },
+    {
+      &quot;joint&quot;: &quot;Neck1&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.002
+    },
+    {
+      &quot;joint&quot;: &quot;Neck2&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.002
+    },
+    {
+      &quot;joint&quot;: &quot;Head&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.002
+    },
+    {
+      &quot;joint&quot;: &quot;Jaw&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.002
+    },
+    {
+      &quot;joint&quot;: &quot;LeftEye&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.002
+    },
+    {
+      &quot;joint&quot;: &quot;RightEye&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.002
+    },
+    {
+      &quot;joint&quot;: &quot;LeftShoulder&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.002
+    },
+    {
+      &quot;joint&quot;: &quot;LeftArm&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.002
+    },
+    {
+      &quot;joint&quot;: &quot;LeftForeArm&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.002
+    },
+    {
+      &quot;joint&quot;: &quot;LeftHand&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.002
+    },
+    {
+      &quot;joint&quot;: &quot;LeftHandThumbEnd&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.002
+    },
+    {
+      &quot;joint&quot;: &quot;LeftHandMiddleEnd&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.002
+    },
+    {
+      &quot;joint&quot;: &quot;RightShoulder&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.002
+    },
+    {
+      &quot;joint&quot;: &quot;RightArm&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.002
+    },
+    {
+      &quot;joint&quot;: &quot;RightForeArm&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.002
+    },
+    {
+      &quot;joint&quot;: &quot;RightHand&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.002
+    },
+    {
+      &quot;joint&quot;: &quot;RightHandThumbEnd&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.002
+    },
+    {
+      &quot;joint&quot;: &quot;RightHandMiddleEnd&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.002
+    },
+    {
+      &quot;joint&quot;: &quot;LeftLeg&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.0033
+    },
+    {
+      &quot;joint&quot;: &quot;LeftShin&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.0055608987629529715
+    },
+    {
+      &quot;joint&quot;: &quot;LeftFoot&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.005577708763999664
+    },
+    {
+      &quot;joint&quot;: &quot;LeftToeBase&quot;,
+      &quot;frame&quot;: 3,
+      &quot;local_position_delta_m&quot;: 0.09999999999999999,
+      &quot;bone_length_delta_m&quot;: 0.0986455902503951,
+      &quot;tolerance_m&quot;: 0.0028246211251235324
+    },
+    {
+      &quot;joint&quot;: &quot;RightLeg&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.0033
+    },
+    {
+      &quot;joint&quot;: &quot;RightShin&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.0055608987629529715
+    },
+    {
+      &quot;joint&quot;: &quot;RightFoot&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.005577708763999664
+    },
+    {
+      &quot;joint&quot;: &quot;RightToeBase&quot;,
+      &quot;frame&quot;: 0,
+      &quot;local_position_delta_m&quot;: 0.0,
+      &quot;bone_length_delta_m&quot;: 0.0,
+      &quot;tolerance_m&quot;: 0.0028246211251235324
+    }
+  ],
+  &quot;failed_joint&quot;: &quot;LeftToeBase&quot;,
+  &quot;failed_frame&quot;: 3,
+  &quot;local_position_delta_m&quot;: 0.09999999999999999,
+  &quot;bone_length_delta_m&quot;: 0.0986455902503951,
+  &quot;ground_world_z&quot;: 0.0,
+  &quot;arrival_error_m&quot;: 1.0,
+  &quot;checks&quot;: {
+    &quot;bones&quot;: {
+      &quot;passed&quot;: false,
+      &quot;frames&quot;: [
+        3
+      ],
+      &quot;max_error_m&quot;: 0.0986455902503951
+    },
+    &quot;knees&quot;: {
+      &quot;passed&quot;: true,
+      &quot;frames&quot;: [],
+      &quot;angles_deg&quot;: [
+        {
+          &quot;left&quot;: 64.72227776444704,
+          &quot;right&quot;: 64.72227776444704
+        },
+        {
+          &quot;left&quot;: 64.72227776444704,
+          &quot;right&quot;: 64.72227776444704
+        },
+        {
+          &quot;left&quot;: 64.72227776444704,
+          &quot;right&quot;: 64.72227776444704
+        },
+        {
+          &quot;left&quot;: 64.72227776444704,
+          &quot;right&quot;: 64.72227776444704
+        },
+        {
+          &quot;left&quot;: 64.72227776444704,
+          &quot;right&quot;: 64.72227776444704
+        },
+        {
+          &quot;left&quot;: 64.72227776444704,
+          &quot;right&quot;: 64.72227776444704
+        },
+        {
+          &quot;left&quot;: 64.72227776444704,
+          &quot;right&quot;: 64.72227776444704
+        },
+        {
+          &quot;left&quot;: 64.72227776444704,
+          &quot;right&quot;: 64.72227776444704
+        }
+      ]
+    },
+    &quot;ankles&quot;: {
+      &quot;passed&quot;: true,
+      &quot;frames&quot;: [],
+      &quot;max_joint_delta_rad&quot;: 0.0
+    },
+    &quot;feet&quot;: {
+      &quot;passed&quot;: true,
+      &quot;frames&quot;: [],
+      &quot;heights_m&quot;: [
+        {
+          &quot;left&quot;: {
+            &quot;ankle&quot;: 0.0,
+            &quot;toe&quot;: 0.0
+          },
+          &quot;right&quot;: {
+            &quot;ankle&quot;: 0.0,
+            &quot;toe&quot;: 0.0
+          }
+        },
+        {
+          &quot;left&quot;: {
+            &quot;ankle&quot;: 0.0,
+            &quot;toe&quot;: 0.0
+          },
+          &quot;right&quot;: {
+            &quot;ankle&quot;: 0.0,
+            &quot;toe&quot;: 0.0
+          }
+        },
+        {
+          &quot;left&quot;: {
+            &quot;ankle&quot;: 0.0,
+            &quot;toe&quot;: 0.0
+          },
+          &quot;right&quot;: {
+            &quot;ankle&quot;: 0.0,
+            &quot;toe&quot;: 0.0
+          }
+        },
+        {
+          &quot;left&quot;: {
+            &quot;ankle&quot;: 0.0,
+            &quot;toe&quot;: 0.0
+          },
+          &quot;right&quot;: {
+            &quot;ankle&quot;: 0.0,
+            &quot;toe&quot;: 0.0
+          }
+        },
+        {
+          &quot;left&quot;: {
+            &quot;ankle&quot;: 0.0,
+            &quot;toe&quot;: 0.0
+          },
+          &quot;right&quot;: {
+            &quot;ankle&quot;: 0.0,
+            &quot;toe&quot;: 0.0
+          }
+        },
+        {
+          &quot;left&quot;: {
+            &quot;ankle&quot;: 0.0,
+            &quot;toe&quot;: 0.0
+          },
+          &quot;right&quot;: {
+            &quot;ankle&quot;: 0.0,
+            &quot;toe&quot;: 0.0
+          }
+        },
+        {
+          &quot;left&quot;: {
+            &quot;ankle&quot;: 0.0,
+            &quot;toe&quot;: 0.0
+          },
+          &quot;right&quot;: {
+            &quot;ankle&quot;: 0.0,
+            &quot;toe&quot;: 0.0
+          }
+        },
+        {
+          &quot;left&quot;: {
+            &quot;ankle&quot;: 0.0,
+            &quot;toe&quot;: 0.0
+          },
+          &quot;right&quot;: {
+            &quot;ankle&quot;: 0.0,
+            &quot;toe&quot;: 0.0
+          }
+        }
+      ]
+    },
+    &quot;support&quot;: {
+      &quot;passed&quot;: false,
+      &quot;frames&quot;: [
+        2,
+        3
+      ],
+      &quot;max_slip_m&quot;: 0.2
+    },
+    &quot;swing&quot;: {
+      &quot;passed&quot;: true,
+      &quot;frames&quot;: [],
+      &quot;landed&quot;: true
+    },
+    &quot;root&quot;: {
+      &quot;passed&quot;: false,
+      &quot;frames&quot;: [
+        2,
+        3
+      ],
+      &quot;max_step_m&quot;: 0.2
+    },
+    &quot;destination&quot;: {
+      &quot;passed&quot;: false,
+      &quot;frames&quot;: [
+        7
+      ],
+      &quot;error_m&quot;: 1.0
+    },
+    &quot;idle&quot;: {
+      &quot;passed&quot;: true,
+      &quot;frames&quot;: [],
+      &quot;stance_m&quot;: [
+        0.0,
+        0.24
+      ],
+      &quot;scope&quot;: &quot;Terminal stability; separate Idle transition not measured&quot;
+    }
+  },
+  &quot;failures&quot;: [
+    &quot;bones&quot;,
+    &quot;support&quot;,
+    &quot;root&quot;,
+    &quot;destination&quot;
+  ]
+}</pre></td></tr></table>

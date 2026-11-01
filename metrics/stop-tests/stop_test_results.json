@@ -1,0 +1,1180 @@
+{
+  "scope": "合成姿勢3ケースの診断回帰結果。実モデル候補探索、12歩行条件、VRM動作品質は未検証。",
+  "cases": [
+    {
+      "case": "stationary",
+      "metrics": {
+        "accepted": true,
+        "reason": "",
+        "bone_lengths_valid": true,
+        "max_bone_length_error_m": 0.0,
+        "bone_length_atol_m": 0.002,
+        "bone_length_rtol": 0.01,
+        "bone_length_diagnostics": [
+          {
+            "joint": "Spine1",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.002
+          },
+          {
+            "joint": "Spine2",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.002
+          },
+          {
+            "joint": "Chest",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.002
+          },
+          {
+            "joint": "Neck1",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.002
+          },
+          {
+            "joint": "Neck2",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.002
+          },
+          {
+            "joint": "Head",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.002
+          },
+          {
+            "joint": "Jaw",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.002
+          },
+          {
+            "joint": "LeftEye",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.002
+          },
+          {
+            "joint": "RightEye",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.002
+          },
+          {
+            "joint": "LeftShoulder",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.002
+          },
+          {
+            "joint": "LeftArm",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.002
+          },
+          {
+            "joint": "LeftForeArm",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.002
+          },
+          {
+            "joint": "LeftHand",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.002
+          },
+          {
+            "joint": "LeftHandThumbEnd",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.002
+          },
+          {
+            "joint": "LeftHandMiddleEnd",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.002
+          },
+          {
+            "joint": "RightShoulder",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.002
+          },
+          {
+            "joint": "RightArm",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.002
+          },
+          {
+            "joint": "RightForeArm",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.002
+          },
+          {
+            "joint": "RightHand",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.002
+          },
+          {
+            "joint": "RightHandThumbEnd",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.002
+          },
+          {
+            "joint": "RightHandMiddleEnd",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.002
+          },
+          {
+            "joint": "LeftLeg",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.0033
+          },
+          {
+            "joint": "LeftShin",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.0055608987629529715
+          },
+          {
+            "joint": "LeftFoot",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.005577708763999664
+          },
+          {
+            "joint": "LeftToeBase",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.0028246211251235324
+          },
+          {
+            "joint": "RightLeg",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.0033
+          },
+          {
+            "joint": "RightShin",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.0055608987629529715
+          },
+          {
+            "joint": "RightFoot",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.005577708763999664
+          },
+          {
+            "joint": "RightToeBase",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.0028246211251235324
+          }
+        ],
+        "ground_world_z": 0.0,
+        "arrival_error_m": 0.0,
+        "checks": {
+          "bones": {
+            "passed": true,
+            "frames": [],
+            "max_error_m": 0.0
+          },
+          "knees": {
+            "passed": true,
+            "frames": [],
+            "angles_deg": [
+              {
+                "left": 64.72227776444704,
+                "right": 64.72227776444704
+              },
+              {
+                "left": 64.72227776444704,
+                "right": 64.72227776444704
+              },
+              {
+                "left": 64.72227776444704,
+                "right": 64.72227776444704
+              },
+              {
+                "left": 64.72227776444704,
+                "right": 64.72227776444704
+              },
+              {
+                "left": 64.72227776444704,
+                "right": 64.72227776444704
+              },
+              {
+                "left": 64.72227776444704,
+                "right": 64.72227776444704
+              },
+              {
+                "left": 64.72227776444704,
+                "right": 64.72227776444704
+              },
+              {
+                "left": 64.72227776444704,
+                "right": 64.72227776444704
+              }
+            ]
+          },
+          "ankles": {
+            "passed": true,
+            "frames": [],
+            "max_joint_delta_rad": 0.0
+          },
+          "feet": {
+            "passed": true,
+            "frames": [],
+            "heights_m": [
+              {
+                "left": {
+                  "ankle": 0.0,
+                  "toe": 0.0
+                },
+                "right": {
+                  "ankle": 0.0,
+                  "toe": 0.0
+                }
+              },
+              {
+                "left": {
+                  "ankle": 0.0,
+                  "toe": 0.0
+                },
+                "right": {
+                  "ankle": 0.0,
+                  "toe": 0.0
+                }
+              },
+              {
+                "left": {
+                  "ankle": 0.0,
+                  "toe": 0.0
+                },
+                "right": {
+                  "ankle": 0.0,
+                  "toe": 0.0
+                }
+              },
+              {
+                "left": {
+                  "ankle": 0.0,
+                  "toe": 0.0
+                },
+                "right": {
+                  "ankle": 0.0,
+                  "toe": 0.0
+                }
+              },
+              {
+                "left": {
+                  "ankle": 0.0,
+                  "toe": 0.0
+                },
+                "right": {
+                  "ankle": 0.0,
+                  "toe": 0.0
+                }
+              },
+              {
+                "left": {
+                  "ankle": 0.0,
+                  "toe": 0.0
+                },
+                "right": {
+                  "ankle": 0.0,
+                  "toe": 0.0
+                }
+              },
+              {
+                "left": {
+                  "ankle": 0.0,
+                  "toe": 0.0
+                },
+                "right": {
+                  "ankle": 0.0,
+                  "toe": 0.0
+                }
+              },
+              {
+                "left": {
+                  "ankle": 0.0,
+                  "toe": 0.0
+                },
+                "right": {
+                  "ankle": 0.0,
+                  "toe": 0.0
+                }
+              }
+            ]
+          },
+          "support": {
+            "passed": true,
+            "frames": [],
+            "max_slip_m": 0.0
+          },
+          "swing": {
+            "passed": true,
+            "frames": [],
+            "landed": true
+          },
+          "root": {
+            "passed": true,
+            "frames": [],
+            "max_step_m": 0.0
+          },
+          "destination": {
+            "passed": true,
+            "frames": [],
+            "error_m": 0.0
+          },
+          "idle": {
+            "passed": true,
+            "frames": [],
+            "stance_m": [
+              0.0,
+              0.24
+            ],
+            "scope": "Terminal stability; separate Idle transition not measured"
+          }
+        },
+        "failures": []
+      }
+    },
+    {
+      "case": "missed-destination",
+      "metrics": {
+        "accepted": false,
+        "reason": "Stop missed destination",
+        "bone_lengths_valid": true,
+        "max_bone_length_error_m": 0.0,
+        "bone_length_atol_m": 0.002,
+        "bone_length_rtol": 0.01,
+        "bone_length_diagnostics": [
+          {
+            "joint": "Spine1",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.002
+          },
+          {
+            "joint": "Spine2",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.002
+          },
+          {
+            "joint": "Chest",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.002
+          },
+          {
+            "joint": "Neck1",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.002
+          },
+          {
+            "joint": "Neck2",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.002
+          },
+          {
+            "joint": "Head",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.002
+          },
+          {
+            "joint": "Jaw",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.002
+          },
+          {
+            "joint": "LeftEye",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.002
+          },
+          {
+            "joint": "RightEye",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.002
+          },
+          {
+            "joint": "LeftShoulder",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.002
+          },
+          {
+            "joint": "LeftArm",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.002
+          },
+          {
+            "joint": "LeftForeArm",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.002
+          },
+          {
+            "joint": "LeftHand",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.002
+          },
+          {
+            "joint": "LeftHandThumbEnd",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.002
+          },
+          {
+            "joint": "LeftHandMiddleEnd",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.002
+          },
+          {
+            "joint": "RightShoulder",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.002
+          },
+          {
+            "joint": "RightArm",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.002
+          },
+          {
+            "joint": "RightForeArm",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.002
+          },
+          {
+            "joint": "RightHand",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.002
+          },
+          {
+            "joint": "RightHandThumbEnd",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.002
+          },
+          {
+            "joint": "RightHandMiddleEnd",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.002
+          },
+          {
+            "joint": "LeftLeg",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.0033
+          },
+          {
+            "joint": "LeftShin",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.0055608987629529715
+          },
+          {
+            "joint": "LeftFoot",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.005577708763999664
+          },
+          {
+            "joint": "LeftToeBase",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.0028246211251235324
+          },
+          {
+            "joint": "RightLeg",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.0033
+          },
+          {
+            "joint": "RightShin",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.0055608987629529715
+          },
+          {
+            "joint": "RightFoot",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.005577708763999664
+          },
+          {
+            "joint": "RightToeBase",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.0028246211251235324
+          }
+        ],
+        "ground_world_z": 0.0,
+        "arrival_error_m": 1.0,
+        "checks": {
+          "bones": {
+            "passed": true,
+            "frames": [],
+            "max_error_m": 0.0
+          },
+          "knees": {
+            "passed": true,
+            "frames": [],
+            "angles_deg": [
+              {
+                "left": 64.72227776444704,
+                "right": 64.72227776444704
+              },
+              {
+                "left": 64.72227776444704,
+                "right": 64.72227776444704
+              },
+              {
+                "left": 64.72227776444704,
+                "right": 64.72227776444704
+              },
+              {
+                "left": 64.72227776444704,
+                "right": 64.72227776444704
+              },
+              {
+                "left": 64.72227776444704,
+                "right": 64.72227776444704
+              },
+              {
+                "left": 64.72227776444704,
+                "right": 64.72227776444704
+              },
+              {
+                "left": 64.72227776444704,
+                "right": 64.72227776444704
+              },
+              {
+                "left": 64.72227776444704,
+                "right": 64.72227776444704
+              }
+            ]
+          },
+          "ankles": {
+            "passed": true,
+            "frames": [],
+            "max_joint_delta_rad": 0.0
+          },
+          "feet": {
+            "passed": true,
+            "frames": [],
+            "heights_m": [
+              {
+                "left": {
+                  "ankle": 0.0,
+                  "toe": 0.0
+                },
+                "right": {
+                  "ankle": 0.0,
+                  "toe": 0.0
+                }
+              },
+              {
+                "left": {
+                  "ankle": 0.0,
+                  "toe": 0.0
+                },
+                "right": {
+                  "ankle": 0.0,
+                  "toe": 0.0
+                }
+              },
+              {
+                "left": {
+                  "ankle": 0.0,
+                  "toe": 0.0
+                },
+                "right": {
+                  "ankle": 0.0,
+                  "toe": 0.0
+                }
+              },
+              {
+                "left": {
+                  "ankle": 0.0,
+                  "toe": 0.0
+                },
+                "right": {
+                  "ankle": 0.0,
+                  "toe": 0.0
+                }
+              },
+              {
+                "left": {
+                  "ankle": 0.0,
+                  "toe": 0.0
+                },
+                "right": {
+                  "ankle": 0.0,
+                  "toe": 0.0
+                }
+              },
+              {
+                "left": {
+                  "ankle": 0.0,
+                  "toe": 0.0
+                },
+                "right": {
+                  "ankle": 0.0,
+                  "toe": 0.0
+                }
+              },
+              {
+                "left": {
+                  "ankle": 0.0,
+                  "toe": 0.0
+                },
+                "right": {
+                  "ankle": 0.0,
+                  "toe": 0.0
+                }
+              },
+              {
+                "left": {
+                  "ankle": 0.0,
+                  "toe": 0.0
+                },
+                "right": {
+                  "ankle": 0.0,
+                  "toe": 0.0
+                }
+              }
+            ]
+          },
+          "support": {
+            "passed": true,
+            "frames": [],
+            "max_slip_m": 0.0
+          },
+          "swing": {
+            "passed": true,
+            "frames": [],
+            "landed": true
+          },
+          "root": {
+            "passed": true,
+            "frames": [],
+            "max_step_m": 0.0
+          },
+          "destination": {
+            "passed": false,
+            "frames": [
+              7
+            ],
+            "error_m": 1.0
+          },
+          "idle": {
+            "passed": true,
+            "frames": [],
+            "stance_m": [
+              0.0,
+              0.24
+            ],
+            "scope": "Terminal stability; separate Idle transition not measured"
+          }
+        },
+        "failures": [
+          "destination"
+        ]
+      }
+    },
+    {
+      "case": "root-and-bone-failure",
+      "metrics": {
+        "accepted": false,
+        "reason": "Stop missed destination",
+        "bone_lengths_valid": false,
+        "max_bone_length_error_m": 0.0986455902503951,
+        "bone_length_atol_m": 0.002,
+        "bone_length_rtol": 0.01,
+        "bone_length_diagnostics": [
+          {
+            "joint": "Spine1",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.002
+          },
+          {
+            "joint": "Spine2",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.002
+          },
+          {
+            "joint": "Chest",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.002
+          },
+          {
+            "joint": "Neck1",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.002
+          },
+          {
+            "joint": "Neck2",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.002
+          },
+          {
+            "joint": "Head",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.002
+          },
+          {
+            "joint": "Jaw",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.002
+          },
+          {
+            "joint": "LeftEye",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.002
+          },
+          {
+            "joint": "RightEye",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.002
+          },
+          {
+            "joint": "LeftShoulder",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.002
+          },
+          {
+            "joint": "LeftArm",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.002
+          },
+          {
+            "joint": "LeftForeArm",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.002
+          },
+          {
+            "joint": "LeftHand",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.002
+          },
+          {
+            "joint": "LeftHandThumbEnd",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.002
+          },
+          {
+            "joint": "LeftHandMiddleEnd",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.002
+          },
+          {
+            "joint": "RightShoulder",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.002
+          },
+          {
+            "joint": "RightArm",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.002
+          },
+          {
+            "joint": "RightForeArm",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.002
+          },
+          {
+            "joint": "RightHand",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.002
+          },
+          {
+            "joint": "RightHandThumbEnd",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.002
+          },
+          {
+            "joint": "RightHandMiddleEnd",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.002
+          },
+          {
+            "joint": "LeftLeg",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.0033
+          },
+          {
+            "joint": "LeftShin",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.0055608987629529715
+          },
+          {
+            "joint": "LeftFoot",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.005577708763999664
+          },
+          {
+            "joint": "LeftToeBase",
+            "frame": 3,
+            "local_position_delta_m": 0.09999999999999999,
+            "bone_length_delta_m": 0.0986455902503951,
+            "tolerance_m": 0.0028246211251235324
+          },
+          {
+            "joint": "RightLeg",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.0033
+          },
+          {
+            "joint": "RightShin",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.0055608987629529715
+          },
+          {
+            "joint": "RightFoot",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.005577708763999664
+          },
+          {
+            "joint": "RightToeBase",
+            "frame": 0,
+            "local_position_delta_m": 0.0,
+            "bone_length_delta_m": 0.0,
+            "tolerance_m": 0.0028246211251235324
+          }
+        ],
+        "failed_joint": "LeftToeBase",
+        "failed_frame": 3,
+        "local_position_delta_m": 0.09999999999999999,
+        "bone_length_delta_m": 0.0986455902503951,
+        "ground_world_z": 0.0,
+        "arrival_error_m": 1.0,
+        "checks": {
+          "bones": {
+            "passed": false,
+            "frames": [
+              3
+            ],
+            "max_error_m": 0.0986455902503951
+          },
+          "knees": {
+            "passed": true,
+            "frames": [],
+            "angles_deg": [
+              {
+                "left": 64.72227776444704,
+                "right": 64.72227776444704
+              },
+              {
+                "left": 64.72227776444704,
+                "right": 64.72227776444704
+              },
+              {
+                "left": 64.72227776444704,
+                "right": 64.72227776444704
+              },
+              {
+                "left": 64.72227776444704,
+                "right": 64.72227776444704
+              },
+              {
+                "left": 64.72227776444704,
+                "right": 64.72227776444704
+              },
+              {
+                "left": 64.72227776444704,
+                "right": 64.72227776444704
+              },
+              {
+                "left": 64.72227776444704,
+                "right": 64.72227776444704
+              },
+              {
+                "left": 64.72227776444704,
+                "right": 64.72227776444704
+              }
+            ]
+          },
+          "ankles": {
+            "passed": true,
+            "frames": [],
+            "max_joint_delta_rad": 0.0
+          },
+          "feet": {
+            "passed": true,
+            "frames": [],
+            "heights_m": [
+              {
+                "left": {
+                  "ankle": 0.0,
+                  "toe": 0.0
+                },
+                "right": {
+                  "ankle": 0.0,
+                  "toe": 0.0
+                }
+              },
+              {
+                "left": {
+                  "ankle": 0.0,
+                  "toe": 0.0
+                },
+                "right": {
+                  "ankle": 0.0,
+                  "toe": 0.0
+                }
+              },
+              {
+                "left": {
+                  "ankle": 0.0,
+                  "toe": 0.0
+                },
+                "right": {
+                  "ankle": 0.0,
+                  "toe": 0.0
+                }
+              },
+              {
+                "left": {
+                  "ankle": 0.0,
+                  "toe": 0.0
+                },
+                "right": {
+                  "ankle": 0.0,
+                  "toe": 0.0
+                }
+              },
+              {
+                "left": {
+                  "ankle": 0.0,
+                  "toe": 0.0
+                },
+                "right": {
+                  "ankle": 0.0,
+                  "toe": 0.0
+                }
+              },
+              {
+                "left": {
+                  "ankle": 0.0,
+                  "toe": 0.0
+                },
+                "right": {
+                  "ankle": 0.0,
+                  "toe": 0.0
+                }
+              },
+              {
+                "left": {
+                  "ankle": 0.0,
+                  "toe": 0.0
+                },
+                "right": {
+                  "ankle": 0.0,
+                  "toe": 0.0
+                }
+              },
+              {
+                "left": {
+                  "ankle": 0.0,
+                  "toe": 0.0
+                },
+                "right": {
+                  "ankle": 0.0,
+                  "toe": 0.0
+                }
+              }
+            ]
+          },
+          "support": {
+            "passed": false,
+            "frames": [
+              2,
+              3
+            ],
+            "max_slip_m": 0.2
+          },
+          "swing": {
+            "passed": true,
+            "frames": [],
+            "landed": true
+          },
+          "root": {
+            "passed": false,
+            "frames": [
+              2,
+              3
+            ],
+            "max_step_m": 0.2
+          },
+          "destination": {
+            "passed": false,
+            "frames": [
+              7
+            ],
+            "error_m": 1.0
+          },
+          "idle": {
+            "passed": true,
+            "frames": [],
+            "stance_m": [
+              0.0,
+              0.24
+            ],
+            "scope": "Terminal stability; separate Idle transition not measured"
+          }
+        },
+        "failures": [
+          "bones",
+          "support",
+          "root",
+          "destination"
+        ]
+      }
+    }
+  ]
+}
