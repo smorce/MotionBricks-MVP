@@ -26,6 +26,8 @@ from soma_pose import overlay_pose
 from collect_stance import build_collect_target, build_collect_lift, build_weight_target, valid_weight_shift, validate_motion
 from step_cycle import choose_swing, foot_points
 from final_stop import build_stop_target, validate_stop_motion, stop_support, validate_stop_progress, calibrate_stop_ground
+from final_stop import support_target_metrics, support_motion_metrics, check_bone_lengths, contact_points
+import logging
 from stop_phase import NavState, apply_nav_command
 
 UPDATE_HZ = 60.0
@@ -255,6 +257,33 @@ def _begin_final_stop(character, pose, goal, rt, wp, destination=None, *, ground
         return None, dict(accepted=False, stage='target', reason='No safe final stop target')
     support = stop_support(pose, goal, parents, names)
     mask = rt['IKPin'].LEFT_FOOT if support == 'left' else rt['IKPin'].RIGHT_FOOT
+    diagnostics = support_target_metrics(pose, target_pose, support, parents, names)
+    diagnostics['f001_support_target'] = diagnostics.copy()
+    diagnostics['ik_pin_mask'] = int(mask)
+    logging.getLogger(__name__).info('Stop target support diagnostics: %s', diagnostics)
+    # 公式補正器で支持足を開始位置に固定する。独自の脚制御は使わない。
+    pin_pose = wp.array(pose.astype(np.float32), dtype=wp.transform, device=character.engine.device)
+    corrected = wp.array(target_pose.astype(np.float32), dtype=wp.transform, device=character.engine.device)
+    corrector = character._target_pose_ik_corrector
+    corrector.capture_pins(pin_pose, mask, stream=character.engine.stream)
+    try:
+        corrector.apply(corrected, 1.0, stream=character.engine.stream)
+        target_pose = corrected.numpy().reshape((-1, 7)).copy()
+    finally:
+        character.clear_ik_pins()
+    diagnostics.update(support_target_metrics(pose, target_pose, support, parents, names))
+    diagnostics.update(check_bone_lengths([target_pose], pose, names))
+    feet = contact_points(foot_points(target_pose, parents, names), ground)
+    if (diagnostics['support_target_error_m'] > .02
+            or diagnostics['support_target_toe_error_m'] > .02
+            or diagnostics['support_target_error_3d_m'] > .02
+            or diagnostics['support_target_direction_error_rad'] > .1
+            or not diagnostics['bone_lengths_valid']
+            or any(min(feet[s][p][2] for p in ('ankle', 'toe')) > ground['floor_z'] + .04
+                   for s in ('left', 'right'))
+            or any(feet[s][p][2] < ground['floor_z'] - .02
+                   for s in ('left', 'right') for p in ('ankle', 'toe'))):
+        return None, dict(diagnostics, accepted=False, stage='target', reason='No safe pinned stop target')
     target = wp.array(np.repeat(target_pose[None].astype(np.float32), rt['MODEL_POSES_PER_TOKEN'], axis=0),
                       dtype=wp.transform, device=character.engine.device)
     frames = []
@@ -270,8 +299,10 @@ def _begin_final_stop(character, pose, goal, rt, wp, destination=None, *, ground
             if character.time_to_transition() <= 0:
                 break
         else:
-            return None, dict(accepted=False, stage='generation', reason='Final stop generation timed out')
+            return None, dict(diagnostics, accepted=False, stage='generation', reason='Final stop generation timed out')
         metrics = validate_stop_motion(frames, pose, goal, parents, names, ground)
+        metrics = {**diagnostics, **metrics}
+        metrics.update(support_motion_metrics(frames, pose, support, parents, names, ground))
         metrics.update(stage='validation', support=support, ik_pin_mask=int(mask))
         if metrics['accepted']:
             reason = validate_stop_progress(frames, pose, goal if destination is None else destination, support, parents, names)
@@ -374,6 +405,7 @@ def worker(commands: Queue, publish):
         )
         nav = NavState()
         cycle = LocomotionCycle()
+        cycle.ground_calibration = stop_ground
         goal = None
         last_generate_ms = 0.0
         frames = 0

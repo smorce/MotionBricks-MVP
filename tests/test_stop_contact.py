@@ -9,8 +9,11 @@ from locomotion_cycle import LocomotionCycle, SETTLED
 class StopContactTests(unittest.TestCase):
     def airborne(self):
         pose, _, names = standing_pose()
+        from final_stop import calibrate_stop_ground
+        ground = calibrate_stop_ground(pose, standing_pose()[1], names)
         pose[names.index('RightLeg'), 2] += .2
         cycle = LocomotionCycle(log=None)
+        cycle.ground_calibration = ground
         cycle.begin_move([.07, 0], True, 1)
         return cycle, pose
 

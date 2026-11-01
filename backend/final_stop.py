@@ -18,6 +18,37 @@ def contact_points(points, ground):
                    for part, point in feet.items()} for side, feet in points.items()}
 
 
+def support_target_metrics(original, target, support, parents, names):
+    start = foot_points(original, parents, names)[support]
+    end = foot_points(target, parents, names)[support]
+    a = start['toe'][:2] - start['ankle'][:2]
+    b = end['toe'][:2] - end['ankle'][:2]
+    angle = np.arctan2(b[1], b[0]) - np.arctan2(a[1], a[0])
+    return dict(support_side=support,
+                support_target_error_m=float(np.linalg.norm(end['ankle'][:2] - start['ankle'][:2])),
+                support_target_toe_error_m=float(np.linalg.norm(end['toe'][:2] - start['toe'][:2])),
+                support_target_error_3d_m=max(float(np.linalg.norm(end[p] - start[p])) for p in ('ankle', 'toe')),
+                support_target_direction_error_rad=float(abs(np.arctan2(np.sin(angle), np.cos(angle)))))
+
+
+def support_motion_metrics(frames, original, support, parents, names, ground):
+    start = foot_points(original, parents, names)[support]
+    rows = []
+    for i, frame in enumerate(frames):
+        raw = foot_points(frame, parents, names)
+        foot = contact_points(raw, ground)[support]
+        drift = max(float(np.linalg.norm(raw[support][p][:2] - start[p][:2])) for p in ('ankle', 'toe'))
+        contact = min(foot[p][2] for p in ('ankle', 'toe')) <= ground['floor_z'] + .02
+        rows.append(dict(frame=i, drift_m=drift, contact=bool(contact)))
+    peak = max(rows, key=lambda r: r['drift_m'])
+    roots = np.asarray([original, *frames])[:, 0, :2]
+    return dict(support_side=support, support_drift_max_m=peak['drift_m'],
+                support_drift_frame=peak['frame'], support_contact_state=peak['contact'],
+                support_contact_source='SOMA calibrated bone proxy',
+                support_drift_frames=[r for r in rows if r['drift_m'] >= .02],
+                root_travel_m=float(np.linalg.norm(np.diff(roots, axis=0), axis=1).sum()))
+
+
 def stop_support(pose, goal, parents, names):
     """低い足を支持足とし、同じ高さなら進行方向の後足を選ぶ。"""
     points = foot_points(pose, parents, names)
@@ -41,11 +72,8 @@ def validate_stop_progress(frames, original, destination, support, parents, name
         if distance - np.linalg.norm(roots[-1] - np.asarray(destination)[:2]) < .01:
             return 'Stop recovery made insufficient progress'
     start = foot_points(original, parents, names)[support]
-    ground = min(start[p][2] for p in ('ankle', 'toe'))
     for frame in frames:
         foot = foot_points(frame, parents, names)[support]
-        if min(foot[p][2] for p in ('ankle', 'toe')) > ground + .02:
-            break
         if any(np.linalg.norm(foot[p][:2] - start[p][:2]) > .02 for p in ('ankle', 'toe')):
             return 'Stop support foot drifted'
     return ''

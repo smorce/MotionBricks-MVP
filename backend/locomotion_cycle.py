@@ -19,6 +19,7 @@ import numpy as np
 
 from collect_stance import COLLECT_WAIT_S, needs_collect, stance
 from stop_prediction import landing_horizon
+from final_stop import calibrate_stop_ground, contact_points
 from foot_plant import PlantState, stance_width_m
 from gait_log import GAIT_LOG
 import gait_plan
@@ -133,6 +134,7 @@ class LocomotionCycle:
         self.stop_retry_count = 0
         self.last_stop_distance_m = 0.0
         self._ground_z = 0.0
+        self.ground_calibration = None
         self._event = ""
         self._dt = 1.0 / 60.0
         self.parents = default_parents()
@@ -561,15 +563,17 @@ class LocomotionCycle:
         return face
 
     def _capture_ground(self, pose, parents, names) -> None:
-        points = foot_points(pose, parents, names)
-        zs = [float(points[side][part][2]) for side in ("left", "right") for part in ("ankle", "toe")]
-        self._ground_z = min(zs)
+        if self.ground_calibration is None:
+            self.ground_calibration = calibrate_stop_ground(pose, parents, names)
+        self._ground_z = self.ground_calibration['floor_z']
 
     def _update_plants(self, obs, pose, parents, names, dt) -> None:
         if self._plants_updated_s == self.clock:
             return
         self._plants_updated_s = self.clock
         points = foot_points(pose, parents, names)
+        if self.ground_calibration is not None:
+            points = contact_points(points, self.ground_calibration)
         heights = np.array([
             points["left"]["ankle"][2], points["left"]["toe"][2],
             points["right"]["ankle"][2], points["right"]["toe"][2],
@@ -630,6 +634,8 @@ class LocomotionCycle:
             "left_planted": self.plants.left,
             "right_planted": self.plants.right,
             "contact_source": self.plants.source,
+            "soma_contacts": np.asarray(obs.get('contacts')).tolist() if obs.get('contacts') is not None else None,
+            "soma_contacts_available": bool(obs.get('contacts_available', False)),
             "collect_checked": self.collect_checked,
             "collect_attempted": self.collect_attempted,
             "collect_failure_reason": self.collect_failure_reason,

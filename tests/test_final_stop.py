@@ -9,6 +9,50 @@ from final_stop import build_stop_target, validate_stop_motion, validate_stop_pr
 
 
 class FinalStopTests(unittest.TestCase):
+    def test_support_diagnostics_keep_airborne_and_later_frames(self):
+        from final_stop import support_motion_metrics
+        pose, parents, names = standing_pose()
+        frames = np.repeat(pose[None], 4, axis=0)
+        frames[:, 0, 0] += [.01, .03, .05, .04]
+        frames[1:3, 0, 2] += .08
+        metrics = support_motion_metrics(frames, pose, 'left', parents, names,
+                                         calibrate_stop_ground(pose, parents, names))
+        self.assertAlmostEqual(metrics['support_drift_max_m'], .05)
+        self.assertEqual(metrics['support_drift_frame'], 2)
+        self.assertFalse(metrics['support_contact_state'])
+        self.assertEqual([r['frame'] for r in metrics['support_drift_frames']], [1, 2, 3])
+        self.assertTrue(metrics['support_drift_frames'][-1]['contact'])
+
+    def test_support_progress_rejects_movement_after_lift(self):
+        pose, parents, names = standing_pose()
+        frames = np.repeat(pose[None], 4, axis=0)
+        frames[:, 0, 0] = [.01, .02, .03, .04]
+        frames[:, 0, 2] += .08
+        self.assertIn('support foot drifted', validate_stop_progress(
+            frames, pose, [.04, 0], 'left', parents, names))
+
+    def test_target_metrics_measure_ankle_toe_and_direction(self):
+        from final_stop import support_target_metrics
+        pose, parents, names = standing_pose()
+        target = pose.copy()
+        target[0, 0] += .19
+        metrics = support_target_metrics(pose, target, 'left', parents, names)
+        self.assertAlmostEqual(metrics['support_target_error_m'], .19)
+        self.assertAlmostEqual(metrics['support_target_toe_error_m'], .19)
+        self.assertAlmostEqual(metrics['support_target_direction_error_rad'], 0)
+
+    def test_walking_uses_fixed_calibration_for_airborne_start(self):
+        pose, parents, names = standing_pose()
+        cycle = LocomotionCycle(log=None)
+        cycle.ground_calibration = calibrate_stop_ground(pose, parents, names)
+        airborne = pose.copy()
+        airborne[0, 2] += .1
+        cycle.begin_move([1, 0], True, 1)
+        cycle.tick(observe(airborne))
+        self.assertEqual(cycle._ground_z, 0)
+        self.assertFalse(cycle.plants.left)
+        self.assertFalse(cycle.plants.right)
+
     def test_airborne_start_uses_fixed_ground(self):
         rest, parents, names = standing_pose()
         ground = calibrate_stop_ground(rest, parents, names, floor_z=.1)
@@ -188,7 +232,8 @@ class FinalStopTests(unittest.TestCase):
         events = []
         character = SimpleNamespace(
             skeleton=SimpleNamespace(joint_names=names, joint_parent=lambda i: parents[i]),
-            engine=SimpleNamespace(device='cpu'),
+            engine=SimpleNamespace(device='cpu', stream=None),
+            _target_pose_ik_corrector=Mock(),
             current_pose=SimpleNamespace(numpy=lambda: pose.copy()),
             player=SimpleNamespace(record_pose=Mock()),
             generate_to_target_poses=Mock(side_effect=lambda *args: events.append('generate')),
@@ -196,25 +241,35 @@ class FinalStopTests(unittest.TestCase):
             clear_ik_pins=Mock())
         rt = {'MODEL_POSES_PER_TOKEN': 4, 'IKPin': SimpleNamespace(LEFT_FOOT=4, RIGHT_FOOT=8),
               'TargetPoseInferenceParams': lambda **kwargs: kwargs}
-        wp = SimpleNamespace(array=lambda data, **kwargs: data, transform=object)
+        wp = SimpleNamespace(array=lambda data, **kwargs: SimpleNamespace(numpy=lambda: data) if data.ndim == 2 else data, transform=object)
         with patch('engine.build_stop_target', return_value=pose), patch('engine._sync_pose', side_effect=lambda *args,**kwargs: events.append('restore')), patch('engine.validate_stop_motion', return_value={'accepted': True}):
             frames, metrics = _begin_final_stop(character, pose, [0,0], rt, wp, ground=calibrate_stop_ground(pose, parents, names))
         self.assertEqual(events, ['generate', 'restore'])
         self.assertTrue(metrics['accepted'])
         self.assertEqual(len(frames), 1)
-        character.clear_ik_pins.assert_called_once()
+        self.assertEqual(character.clear_ik_pins.call_count, 2)
         self.assertIn(character.generate_to_target_poses.call_args.args[1]['ik_pin_mask'], (4, 8))
         self.assertEqual(metrics['ik_pin_mask'], character.generate_to_target_poses.call_args.args[1]['ik_pin_mask'])
+        displaced = pose.copy()
+        displaced[0, 0] += .19
+        character.generate_to_target_poses.reset_mock()
+        with patch('engine.build_stop_target', return_value=displaced):
+            frames, metrics = _begin_final_stop(character, pose, [.19, 0], rt, wp,
+                                               ground=calibrate_stop_ground(pose, parents, names))
+        self.assertIsNone(frames)
+        self.assertEqual(metrics['stage'], 'target')
+        self.assertAlmostEqual(metrics['f001_support_target']['support_target_error_m'], .19)
+        character.generate_to_target_poses.assert_not_called()
 
     def test_official_generation_exception_restores_pose(self):
         from engine import _begin_final_stop
         pose, parents, names = standing_pose()
         character = SimpleNamespace(skeleton=SimpleNamespace(joint_names=names,joint_parent=lambda i:parents[i]),
-            engine=SimpleNamespace(device='cpu'), generate_to_target_poses=Mock(side_effect=RuntimeError('Inference failed')), clear_ik_pins=Mock())
+            engine=SimpleNamespace(device='cpu', stream=None), _target_pose_ik_corrector=Mock(), generate_to_target_poses=Mock(side_effect=RuntimeError('Inference failed')), clear_ik_pins=Mock())
         rt={'MODEL_POSES_PER_TOKEN':4,'TargetPoseInferenceParams':lambda **kwargs:kwargs,'IKPin':SimpleNamespace(LEFT_FOOT=4,RIGHT_FOOT=8)}
-        wp=SimpleNamespace(array=lambda data,**kwargs:data,transform=object)
+        wp=SimpleNamespace(array=lambda data,**kwargs:SimpleNamespace(numpy=lambda:data) if data.ndim == 2 else data,transform=object)
         with patch('engine.build_stop_target',return_value=pose), patch('engine._sync_pose') as restore:
             with self.assertRaisesRegex(RuntimeError,'Inference failed'):
                 _begin_final_stop(character,pose,[0,0],rt,wp, ground=calibrate_stop_ground(pose, parents, names))
             restore.assert_called_once()
-        character.clear_ik_pins.assert_called_once()
+        self.assertEqual(character.clear_ik_pins.call_count, 2)
