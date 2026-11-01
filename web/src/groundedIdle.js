@@ -8,14 +8,15 @@ const ease = t => { const x=Math.max(0,Math.min(1,t)); return x*x*(3-2*x); };
 // Preserve the *rendered* stance. No IK, rest-pose legs, or corrective hip motion.
 // MotionBricks owns locomotion until it reports a completed standing idle loop.
 export class GroundedIdle {
-  constructor(vrm) {
+  constructor(vrm, legSnapshot=null) {
     this.vrm = vrm;
     this.elapsed = 0;
+    this.legSnapshot=legSnapshot;
     this.rootPosition = vrm.scene.position.clone();
     this.rootQuaternion = vrm.scene.quaternion.clone();
     this.bones = NAMES.map(name => {
       const node = vrm.humanoid.getNormalizedBoneNode(name);
-      return node && {name,node,q:node.quaternion.clone(),p:node.position.clone()};
+      return node && {name,node,q:legSnapshot?.bones.get(name)?.clone()??node.quaternion.clone(),p:node.position.clone()};
     }).filter(Boolean);
   }
   update(dt) {
