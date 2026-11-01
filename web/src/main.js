@@ -769,7 +769,7 @@ function connect(){
       }
       const phase={
         idle:'待機', moving:'移動', decelerating:'減速', final_step:'最後の一歩',
-        waiting_for_foot_contact:'着地待ち', contact_recovery:'接地回復中', settled:'停止姿勢',
+        waiting_for_foot_contact:'着地待ち', contact_recovery:'接地回復中', stop_failed:'停止失敗（歩行停止済み）', settled:'停止姿勢',
         pose_pending:'ポーズ準備', pose_transition:'ポーズ移行', pose_done:'ポーズ完了',
       }[msg.phase]||msg.phase;
       currentMotionState=`動作: ${phase} / 公式: ${msg.official_state} / 速度 ${Number(msg.actual_speed_mps).toFixed(2)}m/s`;

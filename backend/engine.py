@@ -387,7 +387,16 @@ def worker(commands: Queue, publish):
                 action.facing if action.facing is not None else character.movement.current_facing,
                 np.array([1.0, 0.0, 0.0], dtype=np.float32),
             )
-            if action.begin_collect:
+            if action.begin_stop_recovery:
+                try:
+                    applied = _enter_arrival(character, action.pose, "F001", rt, wp, facing)
+                    cycle.note_stop_recovery(applied, character.time_to_transition() if applied else 0.0)
+                except Exception as exc:
+                    _sync_pose(character, action.pose, wp, seed=True)
+                    cycle.note_stop_recovery(False, 0.0)
+                    publish({"type": "error", "message": f"Stop recovery failed: {exc}"})
+                character.movement.reset_desired_velocity()
+            elif action.begin_collect:
                 planted = action.pose
                 feet = foot_points(planted, parents, names)
                 swing = choose_swing(feet['left']['ankle'], feet['right']['ankle'], facing,

@@ -44,12 +44,14 @@ DECELERATING = "decelerating"
 FINAL_STEP = "final_step"
 WAITING = "waiting_for_foot_contact"
 CONTACT_RECOVERY = "contact_recovery"
+STOP_FAILED = "stop_failed"
 SETTLED = "settled"
 POSE_PENDING = "pose_pending"
 POSE_TRANSITION = "pose_transition"
 POSE_DONE = "pose_done"
 
 CONTACT_WAIT_S = 0.75
+STOP_RECOVERY_MAX_S = 4.0
 POSE_WAIT_S = 8.0
 COLLECT_PREPARING = "collect_preparing"
 COLLECTING = "collecting"
@@ -62,6 +64,7 @@ class Action:
     play: bool = False
     begin_collect: bool = False
     begin_arrival: bool = False
+    begin_stop_recovery: bool = False
     pose: np.ndarray | None = None
     seed: bool = False
     prime_walk: bool = False
@@ -93,6 +96,9 @@ class LocomotionCycle:
         self.clock = 0.0
         self.stop_requested_s: float | None = None
         self.stop_facing = None
+        self.recovery_end_s = None
+        self.recovery_pose = None
+        self.stop_failure_reason = ""
         self._plants_updated_s = None
         self.last_plant_s: float | None = None
         self.settled_s: float | None = None
@@ -135,6 +141,9 @@ class LocomotionCycle:
         self.pose_time = 0.0
         self.stop_requested_s = None
         self.stop_facing = None
+        self.recovery_end_s = None
+        self.recovery_pose = None
+        self.stop_failure_reason = ""
         self.last_plant_s = None
         self.settled_s = None
         self.contact_fallback = False
@@ -206,6 +215,15 @@ class LocomotionCycle:
         self.pose_ready = True
         self._event = "pose_choice"
 
+    def note_stop_recovery(self, applied: bool, duration: float) -> None:
+        if self.phase != CONTACT_RECOVERY:
+            return
+        if not applied or not np.isfinite(duration) or duration > STOP_RECOVERY_MAX_S:
+            self.phase = STOP_FAILED
+            self.stop_failure_reason = "Stop recovery generation failed"
+            return
+        self.recovery_end_s = self.clock + max(0.0, duration)
+
     def note_arrival(self, applied: bool, time_to_transition: float) -> None:
         self.arrival_started = True
         self.arrival_done = not applied
@@ -249,6 +267,25 @@ class LocomotionCycle:
         if self.mode is None:
             self._classify(pose, parents, names, distance)
         self._update_plants(obs, pose, parents, names, dt)
+
+        if self.phase == STOP_FAILED:
+            if self.recovery_pose is None:
+                self.recovery_pose = pose.copy()
+            return self._action(self.recovery_pose, pose_out=self.recovery_pose, seed=True, obs=obs)
+
+        if self.phase == CONTACT_RECOVERY:
+            if self.recovery_end_s is not None and self.clock < self.recovery_end_s:
+                return self._action(pose, play=True, obs=obs)
+            if self.recovery_pose is None:
+                self.recovery_pose = pose.copy()
+            if self.plants.left and self.plants.right:
+                self._settle(pose, "recovery_plant")
+                return self._hold_or_arrive(pose, obs)
+            if self.recovery_end_s is None or self.clock > self.recovery_end_s + .25:
+                self.phase = STOP_FAILED
+                self.stop_failure_reason = "Stop recovery did not establish both foot contacts"
+                self._event = "stop_failed"
+            return self._action(self.recovery_pose, pose_out=self.recovery_pose, seed=True, obs=obs)
 
         if self.phase == COLLECTING:
             frame = self.collect_frames[self.collect_index]
@@ -331,10 +368,15 @@ class LocomotionCycle:
             self._settle(pose, "plant")
             return self._hold_or_arrive(pose, obs)
         timed_out = waited > CONTACT_WAIT_S
-        if timed_out and self.phase != CONTACT_RECOVERY:
+        if timed_out:
             self._event = "contact_timeout"
-        self.phase = CONTACT_RECOVERY if timed_out else WAITING
-        self.contact_fallback = timed_out or not bool(obs.get("contacts_available", False))
+            self.phase = CONTACT_RECOVERY
+            self.contact_fallback = True
+            action = self._action(pose, pose_out=pose, obs=obs)
+            action.begin_stop_recovery = True
+            return action
+        self.phase = WAITING
+        self.contact_fallback = not bool(obs.get("contacts_available", False))
         prime = not self.walk_primed
         self.walk_primed = True
         return self._action(pose, walk=True, prime_walk=prime, facing=self.stop_facing, obs=obs)
@@ -510,6 +552,7 @@ class LocomotionCycle:
             "move_id": self.move_id,
             "contacts_available": bool(obs.get("contacts_available", False)),
             "contact_fallback": self.contact_fallback,
+            "stop_failure_reason": self.stop_failure_reason,
             "event": self._event,
         }
         if self.log is not None:
@@ -536,6 +579,7 @@ class LocomotionCycle:
             "last_plant_s": self.last_plant_s,
             "settled_s": self.settled_s,
             "contact_fallback": self.contact_fallback,
+            "stop_failure_reason": self.stop_failure_reason,
             "left_slip_m": row["left_slip_m"],
             "right_slip_m": row["right_slip_m"],
         }
