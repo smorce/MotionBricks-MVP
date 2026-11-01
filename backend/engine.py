@@ -251,6 +251,7 @@ def worker(commands: Queue, publish):
                 in_clip_transition=in_clip_transition,
                 time_to_transition=character.time_to_transition(),
                 dt=DT,
+                hold_stance=nav.hold_stance,
             )
             nav = replace(nav, phase=phase)
             if attempt:
