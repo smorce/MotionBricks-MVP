@@ -5,7 +5,7 @@ import {VRMLoaderPlugin, VRMUtils} from '@pixiv/three-vrm';
 import {threePointToRuntime} from './coords.js';
 import {abductUpperArms, adductUpperLegs, pointFeetForward, stanceData} from './stance.js';
 import {IdleHandoff} from './idleHandoff.js';
-import {SettledIdle} from './settledIdle.js';
+import {GroundedIdle} from './groundedIdle.js';
 import idleMotionUrl from '../../motions/idle.vrma?url';
 import idleBreakMotionUrl from '../../motions/idle_06.vrma?url';
 import {buildKit} from '../../ModernRestaurantCafekit/kit.mjs';
@@ -311,39 +311,17 @@ function releaseVrmaIdle(){
   }
   exitBlend=null;
 }
-const HOLD_BONES=['hips','spine','chest','upperChest','neck','head','leftEye','rightEye',
-  'leftUpperLeg','leftLowerLeg','leftFoot','leftToes','rightUpperLeg','rightLowerLeg','rightFoot','rightToes',
-  'leftShoulder','leftUpperArm','leftLowerArm','leftHand','rightShoulder','rightUpperArm','rightLowerArm','rightHand'];
-let heldStop=null;
-let settledIdle=null;
+let groundedIdle=null;
+let idleExit=null;
 function clearHeldStop(){
-  heldStop=null;
-  settledIdle=null;
+  groundedIdle=null;
 }
-function holdStoppedPose(pose, delta=0){
+function holdStoppedPose(delta=0){
   if(!vrm) return;
-  if(!heldStop){
-    if(!stanceApplied && pose) applyPose(pose);
-    undoStance();
-    heldStop=[];
-    for(const name of HOLD_BONES){
-      const node=vrm.humanoid.getNormalizedBoneNode(name);
-      if(!node) continue;
-      heldStop.push({
-        node,
-        quaternion:node.quaternion.clone(),
-        position:name==='hips'?node.position.clone():null,
-      });
-    }
-    settledIdle=new SettledIdle(vrm.humanoid);
-  }
-  for(const item of heldStop){
-    item.node.quaternion.copy(item.quaternion);
-    if(item.position) item.node.position.copy(item.position);
-  }
-  placeRoot(pose);
-  settledIdle?.update(delta);
-  adjustStance();
+  if(!groundedIdle) groundedIdle=new GroundedIdle(vrm);
+  groundedIdle.update(delta);
+  // Snapshot includes the 9.5-degree stance. Do not multiply it again.
+  stanceApplied=false;
 }
 function captureCharacterPose(){
   const held=[];
@@ -462,6 +440,9 @@ async function loadVrm(url, revoke=false){
     releaseVrmaIdle();
     idleClip=null;
     idleBreakClip=null;
+    clearHeldStop();
+    idleExit=null;
+    stanceApplied=false;
     vrm=gltf.userData.vrm;
     if(!vrm)throw new Error('VRM model not found');
     VRMUtils.rotateVRM0(vrm);
@@ -590,6 +571,7 @@ function sendArrival(usecase, x, z){
   moveRequested=true;
   sawLocomotion=false;
   arrivedFromWalk=false;
+  if(groundedIdle) idleExit={pose:groundedIdle,startedAt:performance.now()};
   clearHeldStop();
   beginExitFromVrma();
   markActive(usecase.id);
@@ -598,7 +580,7 @@ function sendArrival(usecase, x, z){
   clickAt=performance.now();
   lastDecision=`${usecase.title} を選択中…`;
   const goal=threePointToRuntime(x-spawn.x, z-spawn.z);
-  socket.send(JSON.stringify({type:'move', x:goal.x, y:goal.y, usecase:usecase.id, intent:usecase.intent}));
+  socket.send(JSON.stringify({type:'move', x:goal.x, y:goal.y, usecase:usecase.id, intent:usecase.intent, hold_stance:usecase.id==='open-floor'}));
 }
 function buildUsecaseList(){
   const root=document.querySelector('#cases');
@@ -623,7 +605,7 @@ function connect(){
         const nextOfficial=String(msg.official_state||'');
         if(!USE_VRMA_IDLE && msg.phase==='idle' && sawLocomotion && vrm){
           // Idleの最初の姿勢を書き込む前に、直前の表示姿勢を保持する。
-          holdStoppedPose(null);
+          holdStoppedPose(0);
           arrivedFromWalk=true;
           moveRequested=false;
           sawLocomotion=false;
@@ -746,7 +728,7 @@ function animate(){
       adjustStance();
     }else if(holdStop){
       releaseVrmaIdle();
-      holdStoppedPose(pose, delta);
+      holdStoppedPose(delta);
     }else if(handoff?.active||exitBlend){
       if(handoff?.active) beginExitFromVrma();
       if(pose) applyPose(pose);
@@ -756,6 +738,11 @@ function animate(){
       clearHeldStop();
       if(pose) applyPose(pose);
       adjustStance();
+      if(idleExit){
+        const t=(performance.now()-idleExit.startedAt)/240;
+        idleExit.pose.blendToLive(t);
+        if(t>=1) idleExit=null;
+      }
     }
     vrm.update(delta);
   }
