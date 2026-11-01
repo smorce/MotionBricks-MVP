@@ -39,6 +39,27 @@ class StopPhaseTests(unittest.TestCase):
         self.assertEqual(phase, STOPPING)
         self.assertFalse(started)
 
+    def test_standing_idle_never_requests_replacement_pose(self):
+        moving = apply_nav_command(NavState(), {"type": "move", "x": 2, "y": 0,
+                                                     "move_id": 5, "hold_stance": True})
+        self.assertTrue(moving.state.hold_stance)
+        attempted = apply_nav_command(moving.state, {"type": "pose_choice",
+                                                       "pose_id": "F043", "move_id": 5})
+        self.assertEqual(attempted.state.target_pose_id, "F001")
+        phase, request_pose = after_playback(
+            STOPPING, in_idle_loop=True, in_clip_transition=False,
+            time_to_transition=0.0, dt=1/60, hold_stance=True)
+        self.assertEqual(phase, IDLE)
+        self.assertFalse(request_pose)
+        self.assertTrue(arrival_due(phase, False, True))
+
+    def test_generated_pose_remains_available_for_explicit_usecases(self):
+        phase, request_pose = after_playback(
+            STOPPING, in_idle_loop=True, in_clip_transition=False,
+            time_to_transition=0.0, dt=1/60, hold_stance=False)
+        self.assertEqual(phase, POSE_PENDING)
+        self.assertTrue(request_pose)
+
     def test_idle_loop_requests_pose_after_the_official_stop(self):
         phase, attempt = after_playback(
             STOPPING, in_idle_loop=False, in_clip_transition=True, time_to_transition=0.4, dt=1 / 60
