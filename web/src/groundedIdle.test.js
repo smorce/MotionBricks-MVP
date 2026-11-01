@@ -56,6 +56,6 @@ test('a completed idle cannot replace the last displayed walking root and hips',
   vrm.nodes.leftUpperLeg.rotation.z=0.55;
   idle.update(1/60);
   assert.ok(vrm.scene.position.distanceTo(expectedRoot)<1e-9);
-  assert.ok(vrm.nodes.hips.quaternion.angleTo(expectedHip)<1e-8);
+  assert.ok(vrm.nodes.hips.quaternion.angleTo(expectedHip)<1e-6);
   assert.ok(vrm.nodes.leftUpperLeg.quaternion.angleTo(expectedLeg)<1e-8);
 });

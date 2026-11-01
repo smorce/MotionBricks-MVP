@@ -6,6 +6,9 @@ import {threePointToRuntime} from './coords.js';
 import {abductUpperArms, adductUpperLegs, pointFeetForward, stanceData} from './stance.js';
 import {IdleHandoff} from './idleHandoff.js';
 import {GroundedIdle} from './groundedIdle.js';
+import {emptyOwner, reduceOwner, shouldApplyStance} from './poseOwner.js';
+import {GaitDebug} from './gaitDebug.js';
+import {formatGaitStatus} from './gaitView.js';
 import idleMotionUrl from '../../motions/idle.vrma?url';
 import idleBreakMotionUrl from '../../motions/idle_06.vrma?url';
 import {buildKit} from '../../ModernRestaurantCafekit/kit.mjs';
@@ -165,6 +168,10 @@ marker.rotation.x=-Math.PI/2;
 marker.position.y=FLOOR_TOP+0.02;
 marker.visible=false;
 scene.add(marker);
+const gaitDebug = new GaitDebug(scene);
+let gait = null;
+let owner = emptyOwner();
+let gaitDebugOn = false;
 const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2();
 let vrm=null;
@@ -192,8 +199,6 @@ let motionPhase='idle';
 let officialState='';
 let actualSpeed=null;
 let moveRequested=false;
-let sawLocomotion=false;
-let arrivedFromWalk=false;
 let lastInputAt=performance.now();
 let idleClip=null;
 let idleBreakClip=null;
@@ -297,12 +302,6 @@ function standingStill(){
   if(!officialIsIdle()) return false;
   return Number.isFinite(actualSpeed)&&actualSpeed<=IDLE_SPEED_MAX;
 }
-function stoppedAfterWalk(){
-  if(USE_VRMA_IDLE||moveRequested||!arrivedFromWalk) return false;
-  if(motionPhase!=='idle') return false;
-  if(!officialIsIdle()) return false;
-  return !Number.isFinite(actualSpeed)||actualSpeed<=IDLE_SPEED_MAX;
-}
 function releaseVrmaIdle(){
   if(handoff){
     handoff.stop();
@@ -315,13 +314,6 @@ let groundedIdle=null;
 let idleExit=null;
 function clearHeldStop(){
   groundedIdle=null;
-}
-function holdStoppedPose(delta=0){
-  if(!vrm) return;
-  if(!groundedIdle) groundedIdle=new GroundedIdle(vrm);
-  groundedIdle.update(delta);
-  // Snapshot includes the 9.5-degree stance. Do not multiply it again.
-  stanceApplied=false;
 }
 function captureCharacterPose(){
   const held=[];
@@ -569,10 +561,6 @@ function sendArrival(usecase, x, z){
   }
   pendingCase=usecase.title;
   moveRequested=true;
-  sawLocomotion=false;
-  arrivedFromWalk=false;
-  if(groundedIdle) idleExit={pose:groundedIdle,startedAt:performance.now()};
-  clearHeldStop();
   beginExitFromVrma();
   markActive(usecase.id);
   marker.position.set(x, FLOOR_TOP+0.02, z);
@@ -602,25 +590,19 @@ function connect(){
     if(msg.type==='rig'){rig=msg;initializeRetarget()}
     if(msg.type==='frame'){
       if(msg.phase){
-        const nextOfficial=String(msg.official_state||'');
-        if(!USE_VRMA_IDLE && msg.phase==='idle' && sawLocomotion && vrm){
-          // Snapshot the last RENDERED stopping pose before the backend idle frame can overwrite it.
-          // All joints and the root must come from the same frame.
-          if(!groundedIdle) groundedIdle=new GroundedIdle(vrm);
-          arrivedFromWalk=true;
-          moveRequested=false;
-          sawLocomotion=false;
-        }
         motionPhase=msg.phase;
-        officialState=nextOfficial;
+        officialState=String(msg.official_state||'');
         actualSpeed=Number(msg.actual_speed_mps);
-        if(msg.phase!=='idle' && msg.phase!=='pose_done') sawLocomotion=true;
-        if(msg.phase!=='idle'){
-          arrivedFromWalk=false;
-          clearHeldStop();
-        }
       }
+      if(msg.gait) gait=msg.gait;
+      const reduced=reduceOwner(owner, {
+        phase: msg.phase || motionPhase,
+        moveId: msg.gait?.move_id ?? owner.moveId,
+        settleSeq: msg.gait?.settle_seq ?? owner.settleSeq,
+      });
       lastPose=currentPose; currentPose=msg.poses; poseStamp=performance.now();
+      if(reduced.capture) lastPose=currentPose;
+      owner=reduced;
       if(clickAt){clickLatency=performance.now()-clickAt; clickAt=0}
       if(Number.isFinite(msg.generate_ms)) generateMs=msg.generate_ms;
     }
@@ -632,29 +614,22 @@ function connect(){
     if(msg.type==='arrived'){
       const errorM=Number(msg.arrival_error_m);
       const errorText=Number.isFinite(errorM)?` / 目標誤差 ${errorM.toFixed(2)}m`:'';
-      lastStage=`${pendingCase} / 停止完了: ${msg.pose_id} / SOMA姿勢 ${msg.pose_applied ? '適用済' : '未変換（公式idle）'}${errorText}`;
+      lastStage=`${pendingCase} / 停止完了${msg.pose_applied ? ` / 到着姿勢 ${msg.pose_id}` : ' / 着地姿勢を維持'}${errorText}`;
     }
     if(msg.type==='stop_triggered'){
-      lastStage=`減速→公式Idle遷移開始: 残り${Number(msg.distance_m).toFixed(2)}m / 速度${Number(msg.speed_mps).toFixed(2)}m/s`;
+      lastStage=`最後の一歩: 残り${Number(msg.distance_m).toFixed(2)}m / 速度${Number(msg.speed_mps).toFixed(2)}m/s`;
     }
     if(msg.type==='motion_state'){
       motionPhase=msg.phase||motionPhase;
       officialState=String(msg.official_state||'');
       actualSpeed=Number(msg.actual_speed_mps);
-      const settled=motionPhase==='idle'||motionPhase==='pose_done';
-      if(!settled) sawLocomotion=true;
-      if(settled&&sawLocomotion){
-        if(motionPhase==='idle' && vrm && !groundedIdle) groundedIdle=new GroundedIdle(vrm);
-        moveRequested=false;
-        sawLocomotion=false;
-        if(motionPhase==='idle') arrivedFromWalk=true;
-      }
-      if(motionPhase!=='idle'){
-        arrivedFromWalk=false;
-        clearHeldStop();
-      }
-      const phase={idle:'待機',moving:'移動',stopping:'停止遷移',pose_pending:'ポーズ準備',pose_transition:'ポーズ移行',pose_done:'ポーズ完了'}[msg.phase]||msg.phase;
-      currentMotionState=`停止制御: ${phase} / 公式: ${msg.official_state} / 速度 ${Number(msg.actual_speed_mps).toFixed(2)}m/s`;
+      if(msg.gait) gait=msg.gait;
+      const phase={
+        idle:'待機', moving:'移動', decelerating:'減速', final_step:'最後の一歩',
+        waiting_for_foot_contact:'着地待ち', settled:'停止姿勢',
+        pose_pending:'ポーズ準備', pose_transition:'ポーズ移行', pose_done:'ポーズ完了',
+      }[msg.phase]||msg.phase;
+      currentMotionState=`動作: ${phase} / 公式: ${msg.official_state} / 速度 ${Number(msg.actual_speed_mps).toFixed(2)}m/s`;
     }
     if(msg.type==='error'){lastError=msg.message}
   };
@@ -664,6 +639,36 @@ function connect(){
   };
 }
 connect();
+function setGaitDebug(on){
+  gaitDebugOn=on;
+  gaitDebug.setEnabled(on);
+  const button=document.querySelector('#gaitDebug');
+  if(button) button.textContent=on?'歩行デバッグを隠す':'歩行デバッグを表示';
+}
+document.querySelector('#gaitDebug')?.addEventListener('click', ()=>setGaitDebug(!gaitDebugOn));
+document.querySelector('#gaitLog')?.addEventListener('click', async ()=>{
+  const button=document.querySelector('#gaitLog');
+  try{
+    const response=await fetch('http://127.0.0.1:8765/gait-log');
+    if(!response.ok) throw new Error('Gait log is not available');
+    const blob=await response.blob();
+    const url=URL.createObjectURL(blob);
+    const link=document.createElement('a');
+    link.href=url;
+    link.download='gait-log.json';
+    link.click();
+    URL.revokeObjectURL(url);
+  }catch(err){
+    if(button) button.textContent='Log download failed';
+    console.error(err);
+  }
+});
+window.addEventListener('keydown', (event)=>{
+  if(event.repeat || event.metaKey || event.ctrlKey || event.altKey) return;
+  const tag=document.activeElement?.tagName;
+  if(tag==='INPUT' || tag==='TEXTAREA') return;
+  if(event.key==='d' || event.key==='D') setGaitDebug(!gaitDebugOn);
+});
 let pointerDownAt=null;
 renderer.domElement.addEventListener('wheel', ()=>{ markInput(); }, {passive:true});
 renderer.domElement.addEventListener('pointerdown',e=>{
@@ -713,39 +718,49 @@ function animate(){
   const blend=Math.min(1,(performance.now()-poseStamp)/(1000/60));
   const pose=currentPose?lerpPose(lastPose, currentPose, blend):null;
   if(vrm){
-    const clipsReady=Boolean(idleClip&&idleBreakClip);
-    const holdIdle=USE_VRMA_IDLE&&standingStill()&&clipsReady&&!exitBlend;
-    const holdStop=stoppedAfterWalk();
-    if(holdIdle){
-      const want=desiredIdleKind();
-      if(!handoff?.active){
-        // 歩行ですでに描いた足を開始にする。停止姿勢で上書きすると、一度開いてから閉じる。
-        if(!stanceApplied && pose) applyPose(pose);
-        lastInputAt=performance.now();
-        beginHandoff('idle');
-      }else if(handoffClip!==want){
-        beginHandoff(want);
-      }
-      handoff?.update(delta);
+    if(owner.capture && currentPose){
+      applyPose(currentPose);
       adjustStance();
-    }else if(holdStop){
-      releaseVrmaIdle();
-      holdStoppedPose(delta);
-    }else if(handoff?.active||exitBlend){
-      if(handoff?.active) beginExitFromVrma();
-      if(pose) applyPose(pose);
-      adjustStance();
-      blendExit();
+      groundedIdle=new GroundedIdle(vrm);
+      owner={...owner, capture:false};
+      moveRequested=false;
+    }else if(owner.mode==='settled' && groundedIdle){
+      groundedIdle.update(delta);
     }else{
-      clearHeldStop();
-      if(pose) applyPose(pose);
-      adjustStance();
-      if(idleExit){
-        const t=(performance.now()-idleExit.startedAt)/240;
-        idleExit.pose.blendToLive(t);
-        if(t>=1) idleExit=null;
+      if(owner.blend && groundedIdle){
+        idleExit={pose:groundedIdle, startedAt:performance.now()};
+        groundedIdle=null;
+        owner={...owner, blend:false};
+      }
+      const clipsReady=Boolean(idleClip&&idleBreakClip);
+      const holdIdle=USE_VRMA_IDLE&&standingStill()&&clipsReady&&!exitBlend;
+      if(holdIdle){
+        const want=desiredIdleKind();
+        if(!handoff?.active){
+          if(!stanceApplied && pose) applyPose(pose);
+          lastInputAt=performance.now();
+          beginHandoff('idle');
+        }else if(handoffClip!==want){
+          beginHandoff(want);
+        }
+        handoff?.update(delta);
+        adjustStance();
+      }else if(handoff?.active||exitBlend){
+        if(handoff?.active) beginExitFromVrma();
+        if(pose) applyPose(pose);
+        if(shouldApplyStance(owner)) adjustStance();
+        blendExit();
+      }else{
+        if(pose) applyPose(pose);
+        if(shouldApplyStance(owner)) adjustStance();
+        if(idleExit){
+          const t=(performance.now()-idleExit.startedAt)/240;
+          idleExit.pose.blendToLive(t);
+          if(t>=1) idleExit=null;
+        }
       }
     }
+    gaitDebug.update(gait, rig, spawn, FLOOR_TOP);
     vrm.update(delta);
   }
   if(place) place.tick(clock.elapsedTime);
@@ -777,9 +792,12 @@ function animate(){
   statusT+=delta;
   if(statusT>.5){
     statusT=0;
+    const readout=document.querySelector('#gaitReadout');
+    if(readout) readout.textContent=formatGaitStatus(gait);
     status.textContent=[placeNote, socket?.readyState===1?'MotionBricks 接続中':'サーバー未接続',
       vrm?'ロゼVRM 読み込み済み':'ロゼVRM 未読み込み',
       exitBlend?'待機から歩行へ':handoff?.active?`待機 ${handoffClip}.vrma`:'',
+      formatGaitStatus(gait),
       `表示 ${fps.toFixed(0)} fps`,
       generateMs!=null?`生成 ${generateMs.toFixed(0)} ms`:'',
       clickLatency!=null?`クリックから姿勢更新 ${clickLatency.toFixed(0)} ms`:'',

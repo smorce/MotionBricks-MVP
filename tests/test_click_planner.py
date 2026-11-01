@@ -1,42 +1,44 @@
-import math
 import sys
 import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
-from click_planner import ClickStopSettings, plan_click_move, stop_distance
+from click_planner import plan_click_move, stop_distance
 
 
 class ClickControllerTests(unittest.TestCase):
-    def test_near_goal_stops(self):
-        decision = plan_click_move(0.1, 0.0)
+    def test_near_goal_does_not_creep(self):
+        decision = plan_click_move(0.05, 0.0)
         self.assertTrue(decision.stop)
         self.assertEqual(decision.input_strength, 0.0)
+        self.assertEqual(decision.mode, "micro")
 
-    def test_fast_motion_stops_earlier(self):
-        self.assertGreater(stop_distance(2.4), stop_distance(0.3))
-        self.assertTrue(plan_click_move(1.3, 2.4).stop)
-        self.assertFalse(plan_click_move(1.3, 0.3).stop)
-
-    def test_strength_increases_farther_from_goal(self):
-        near = plan_click_move(1.8, 0.2)
-        far = plan_click_move(8.0, 0.2)
-        self.assertFalse(near.stop)
-        self.assertLess(near.input_strength, far.input_strength)
-        self.assertAlmostEqual(far.input_strength, 1.0)
-
-    def test_stops_never_warp_or_overshoot_via_coordinate_edit(self):
-        decision = plan_click_move(0.8, 2.0)
+    def test_short_distance_is_not_a_slow_walk(self):
+        decision = plan_click_move(0.4, 0.2)
         self.assertTrue(decision.stop)
-        self.assertFalse(hasattr(decision, "corrected_position"))
+        self.assertEqual(decision.input_strength, 0.0)
+        self.assertNotEqual(decision.input_strength, 0.12)
 
-    def test_extreme_speed_is_capped(self):
-        self.assertEqual(stop_distance(99), ClickStopSettings().max_stop_distance_m)
+    def test_long_walk_uses_the_full_blend_until_the_last_step(self):
+        far = plan_click_move(8.0, 2.3)
+        self.assertFalse(far.stop)
+        self.assertEqual(far.input_strength, 1.0)
+        self.assertEqual(far.mode, "walk")
+        near = plan_click_move(0.4, 2.3)
+        self.assertTrue(near.stop)
+        self.assertEqual(near.input_strength, 0.0)
 
-    def test_reject_invalid_goals(self):
+    def test_stop_window_does_not_grow_with_speed(self):
+        self.assertEqual(stop_distance(0.3), stop_distance(2.4))
+        self.assertEqual(stop_distance(99), stop_distance(0.0))
+
+    def test_rejects_invalid_inputs(self):
         for value in (-1, float("inf"), float("nan")):
-            with self.subTest(value=value), self.assertRaises(ValueError):
-                plan_click_move(value, 0.0)
+            with self.subTest(value=value):
+                with self.assertRaises(ValueError):
+                    plan_click_move(value, 0.0)
+                with self.assertRaises(ValueError):
+                    stop_distance(value)
 
 
 if __name__ == "__main__":
