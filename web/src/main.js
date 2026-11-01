@@ -776,7 +776,7 @@ function animate(){
       if(stopFootPlant && (motionPhase==='stopping'||motionPhase==='pose_pending')){
         // Solve after the slider rotation, not before; otherwise it moves a planted foot.
         stopFootPlant.update(delta);
-      }else if(stopFootPlant && motionPhase!=='moving'){
+      }else if(stopFootPlant && motionPhase!=='stopping'){
         stopFootPlant=null;
       }
     }
