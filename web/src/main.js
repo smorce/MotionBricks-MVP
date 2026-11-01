@@ -6,6 +6,7 @@ import {threePointToRuntime} from './coords.js';
 import {abductUpperArms, adductUpperLegs, pointFeetForward, stanceData} from './stance.js';
 import {IdleHandoff} from './idleHandoff.js';
 import {SettledIdle} from './settledIdle.js';
+import {StopFootPlant} from './stopFootPlant.js';
 import idleMotionUrl from '../../motions/idle.vrma?url';
 import idleBreakMotionUrl from '../../motions/idle_06.vrma?url';
 import {buildKit} from '../../ModernRestaurantCafekit/kit.mjs';
@@ -316,15 +317,19 @@ const HOLD_BONES=['hips','spine','chest','upperChest','neck','head','leftEye','r
   'leftShoulder','leftUpperArm','leftLowerArm','leftHand','rightShoulder','rightUpperArm','rightLowerArm','rightHand'];
 let heldStop=null;
 let settledIdle=null;
+let heldRoot=null;
+let stopFootPlant=null;
 function clearHeldStop(){
   heldStop=null;
   settledIdle=null;
+  heldRoot=null;
 }
-function holdStoppedPose(pose, delta=0){
+function holdStoppedPose(delta=0){
   if(!vrm) return;
   if(!heldStop){
-    if(!stanceApplied && pose) applyPose(pose);
-    undoStance();
+    // The LAST RENDERED frame already includes the 9.5-degree stance and any foot IK.
+    // Never undo and reapply the slider around this snapshot: it changes foot targets.
+    heldRoot={position:vrm.scene.position.clone(), quaternion:vrm.scene.quaternion.clone()};
     heldStop=[];
     for(const name of HOLD_BONES){
       const node=vrm.humanoid.getNormalizedBoneNode(name);
@@ -336,14 +341,17 @@ function holdStoppedPose(pose, delta=0){
       });
     }
     settledIdle=new SettledIdle(vrm.humanoid);
+    stopFootPlant=null;
   }
   for(const item of heldStop){
     item.node.quaternion.copy(item.quaternion);
     if(item.position) item.node.position.copy(item.position);
   }
-  placeRoot(pose);
+  vrm.scene.position.copy(heldRoot.position);
+  vrm.scene.quaternion.copy(heldRoot.quaternion);
   settledIdle?.update(delta);
-  adjustStance();
+  // The frozen baseline *already contains* the walk stance adjustment.
+  stanceApplied=false;
 }
 function captureCharacterPose(){
   const held=[];
@@ -459,6 +467,9 @@ async function loadVrm(url, revoke=false){
   try{
     const gltf=await loader.loadAsync(url);
     if(vrm){scene.remove(vrm.scene);VRMUtils.deepDispose(vrm.scene)}
+    clearHeldStop();
+    stopFootPlant=null;
+    stanceApplied=false;
     releaseVrmaIdle();
     idleClip=null;
     idleBreakClip=null;
@@ -591,6 +602,7 @@ function sendArrival(usecase, x, z){
   sawLocomotion=false;
   arrivedFromWalk=false;
   clearHeldStop();
+  stopFootPlant=null;
   beginExitFromVrma();
   markActive(usecase.id);
   marker.position.set(x, FLOOR_TOP+0.02, z);
@@ -623,10 +635,13 @@ function connect(){
         const nextOfficial=String(msg.official_state||'');
         if(!USE_VRMA_IDLE && msg.phase==='idle' && sawLocomotion && vrm){
           // Idleの最初の姿勢を書き込む前に、直前の表示姿勢を保持する。
-          holdStoppedPose(null);
+          holdStoppedPose(0);
           arrivedFromWalk=true;
           moveRequested=false;
           sawLocomotion=false;
+        }
+        if(!USE_VRMA_IDLE && msg.phase==='stopping' && vrm && !stopFootPlant){
+          stopFootPlant=new StopFootPlant(vrm.humanoid);
         }
         motionPhase=msg.phase;
         officialState=nextOfficial;
@@ -652,6 +667,7 @@ function connect(){
       lastStage=`${pendingCase} / 停止完了: ${msg.pose_id} / SOMA姿勢 ${msg.pose_applied ? '適用済' : '未変換（公式idle）'}${errorText}`;
     }
     if(msg.type==='stop_triggered'){
+      if(!USE_VRMA_IDLE && vrm && !stopFootPlant) stopFootPlant=new StopFootPlant(vrm.humanoid);
       lastStage=`減速→公式Idle遷移開始: 残り${Number(msg.distance_m).toFixed(2)}m / 速度${Number(msg.speed_mps).toFixed(2)}m/s`;
     }
     if(msg.type==='motion_state'){
@@ -661,6 +677,7 @@ function connect(){
       const settled=motionPhase==='idle'||motionPhase==='pose_done';
       if(!settled) sawLocomotion=true;
       if(settled&&sawLocomotion){
+        if(!USE_VRMA_IDLE && motionPhase==='idle' && vrm) holdStoppedPose(0);
         moveRequested=false;
         sawLocomotion=false;
         if(motionPhase==='idle') arrivedFromWalk=true;
@@ -746,7 +763,7 @@ function animate(){
       adjustStance();
     }else if(holdStop){
       releaseVrmaIdle();
-      holdStoppedPose(pose, delta);
+      holdStoppedPose(delta);
     }else if(handoff?.active||exitBlend){
       if(handoff?.active) beginExitFromVrma();
       if(pose) applyPose(pose);
@@ -756,6 +773,12 @@ function animate(){
       clearHeldStop();
       if(pose) applyPose(pose);
       adjustStance();
+      if(stopFootPlant && (motionPhase==='stopping'||motionPhase==='pose_pending')){
+        // Solve after the slider rotation, not before; otherwise it moves a planted foot.
+        stopFootPlant.update(delta);
+      }else if(stopFootPlant && motionPhase!=='moving'){
+        stopFootPlant=null;
+      }
     }
     vrm.update(delta);
   }
