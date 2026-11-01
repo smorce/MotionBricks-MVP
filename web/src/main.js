@@ -6,7 +6,6 @@ import {threePointToRuntime} from './coords.js';
 import {abductUpperArms, adductUpperLegs, pointFeetForward, stanceData} from './stance.js';
 import {IdleHandoff} from './idleHandoff.js';
 import {GroundedIdle} from './groundedIdle.js';
-import {StopStanceHistory} from './stopStanceHistory.js';
 import idleMotionUrl from '../../motions/idle.vrma?url';
 import idleBreakMotionUrl from '../../motions/idle_06.vrma?url';
 import {buildKit} from '../../ModernRestaurantCafekit/kit.mjs';
@@ -314,14 +313,12 @@ function releaseVrmaIdle(){
 }
 let groundedIdle=null;
 let idleExit=null;
-let stopStanceHistory=null;
-let preIdleStance=null;
 function clearHeldStop(){
   groundedIdle=null;
 }
 function holdStoppedPose(delta=0){
   if(!vrm) return;
-  if(!groundedIdle) groundedIdle=new GroundedIdle(vrm, preIdleStance);
+  if(!groundedIdle) groundedIdle=new GroundedIdle(vrm);
   groundedIdle.update(delta);
   // Snapshot includes the 9.5-degree stance. Do not multiply it again.
   stanceApplied=false;
@@ -445,8 +442,6 @@ async function loadVrm(url, revoke=false){
     idleBreakClip=null;
     clearHeldStop();
     idleExit=null;
-    stopStanceHistory=null;
-    preIdleStance=null;
     stanceApplied=false;
     vrm=gltf.userData.vrm;
     if(!vrm)throw new Error('VRM model not found');
@@ -578,8 +573,6 @@ function sendArrival(usecase, x, z){
   arrivedFromWalk=false;
   if(groundedIdle) idleExit={pose:groundedIdle,startedAt:performance.now()};
   clearHeldStop();
-  stopStanceHistory=null;
-  preIdleStance=null;
   beginExitFromVrma();
   markActive(usecase.id);
   marker.position.set(x, FLOOR_TOP+0.02, z);
@@ -611,13 +604,13 @@ function connect(){
       if(msg.phase){
         const nextOfficial=String(msg.official_state||'');
         if(!USE_VRMA_IDLE && msg.phase==='idle' && sawLocomotion && vrm){
-          preIdleStance=stopStanceHistory?.select()??null;
-          // Capture only in the render loop after the official idle/speed guard passes.
+          // Snapshot the last RENDERED stopping pose before the backend idle frame can overwrite it.
+          // All joints and the root must come from the same frame.
+          if(!groundedIdle) groundedIdle=new GroundedIdle(vrm);
           arrivedFromWalk=true;
           moveRequested=false;
           sawLocomotion=false;
         }
-        if(msg.phase==='stopping' && motionPhase!=='stopping') stopStanceHistory=new StopStanceHistory();
         motionPhase=msg.phase;
         officialState=nextOfficial;
         actualSpeed=Number(msg.actual_speed_mps);
@@ -651,12 +644,11 @@ function connect(){
       const settled=motionPhase==='idle'||motionPhase==='pose_done';
       if(!settled) sawLocomotion=true;
       if(settled&&sawLocomotion){
-        if(motionPhase==='idle') preIdleStance=stopStanceHistory?.select()??null;
+        if(motionPhase==='idle' && vrm && !groundedIdle) groundedIdle=new GroundedIdle(vrm);
         moveRequested=false;
         sawLocomotion=false;
         if(motionPhase==='idle') arrivedFromWalk=true;
       }
-      if(motionPhase==='stopping' && !stopStanceHistory) stopStanceHistory=new StopStanceHistory();
       if(motionPhase!=='idle'){
         arrivedFromWalk=false;
         clearHeldStop();
@@ -748,9 +740,6 @@ function animate(){
       clearHeldStop();
       if(pose) applyPose(pose);
       adjustStance();
-      if(stopStanceHistory && motionPhase==='stopping'){
-        stopStanceHistory.sample(vrm,{speed:actualSpeed,dt:delta});
-      }
       if(idleExit){
         const t=(performance.now()-idleExit.startedAt)/240;
         idleExit.pose.blendToLive(t);
