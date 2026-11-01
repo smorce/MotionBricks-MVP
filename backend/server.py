@@ -135,7 +135,7 @@ async def ws_endpoint(ws: WebSocket):
                 # 移動はすぐ開始する。遅れて届いた d3-mini の結果は move_id が違うので捨てる。
                 move_id = next(move_ids)
                 request_numbers[ws] = move_id
-                commands.put({'type':'move','x':float(msg['x']),'y':float(msg['y']),'move_id':move_id})
+                commands.put({'type':'move','x':float(msg['x']),'y':float(msg['y']),'move_id':move_id, 'hold_stance':msg.get('hold_stance') is True})
                 asyncio.create_task(route_and_submit(ws, msg, move_id))
     except WebSocketDisconnect:
         pass
