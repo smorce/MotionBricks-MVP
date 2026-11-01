@@ -315,6 +315,8 @@ function releaseVrmaIdle(){
   exitBlend=null;
 }
 let groundedIdle=null;
+let idleReadySent=null;
+let collectBlendStarted=null;
 let idleExit=null;
 const followTarget=new THREE.Vector3();
 const lastFollow=new THREE.Vector3();
@@ -656,17 +658,31 @@ function connect(){
       tryRevealCharacter();
     }
     if(msg.type==='frame'){
+      if(owner.seenMove!=null && msg.gait?.move_id!=null && msg.gait.move_id<owner.seenMove) return;
+      if(msg.gait?.move_id===owner.moveId && msg.gait?.settle_seq<owner.settleSeq) return;
       if(msg.phase){
         motionPhase=msg.phase;
         officialState=String(msg.official_state||'');
         actualSpeed=Number(msg.actual_speed_mps);
       }
-      if(msg.gait) gait=msg.gait;
+      if(msg.gait) {
+        gait=msg.gait;
+        if(gait.collect_failure_reason) lastStage='収束失敗・停止姿勢維持';
+        else if(msg.phase==='collect_preparing') lastStage='収束モーション生成中';
+        else if(msg.phase==='collecting') lastStage='収束モーション再生中';
+        else if(msg.phase==='settled') lastStage=gait.collect_attempted?'収束完了':gait.collect_checked?'収束不要':'上半身Idle移行中・足幅判定待ち';
+        if(gait.collect_metrics?.before) lastStage+=` / 足幅 前 ${gait.collect_metrics.before.map(v=>v.toFixed(3)).join('/')}m → 後 ${gait.collect_metrics.after.map(v=>v.toFixed(3)).join('/')}m`;
+      }
       const reduced=reduceOwner(owner, {
         phase: msg.phase || motionPhase,
         moveId: msg.gait?.move_id ?? owner.moveId,
         settleSeq: msg.gait?.settle_seq ?? owner.settleSeq,
       });
+      if(reduced===owner) return;
+      if(reduced.mode==='collecting' && owner.mode!=='collecting'){
+        groundedIdle?.captureUpper();
+        collectBlendStarted=performance.now();
+      }
       lastPose=currentPose; currentPose=msg.poses; poseStamp=performance.now();
       if(reduced.capture) lastPose=currentPose;
       owner=reduced;
@@ -691,7 +707,14 @@ function connect(){
       motionPhase=msg.phase||motionPhase;
       officialState=String(msg.official_state||'');
       actualSpeed=Number(msg.actual_speed_mps);
-      if(msg.gait) gait=msg.gait;
+      if(msg.gait) {
+        gait=msg.gait;
+        if(gait.collect_failure_reason) lastStage='収束失敗・停止姿勢維持';
+        else if(msg.phase==='collect_preparing') lastStage='収束モーション生成中';
+        else if(msg.phase==='collecting') lastStage='収束モーション再生中';
+        else if(msg.phase==='settled') lastStage=gait.collect_attempted?'収束完了':gait.collect_checked?'収束不要':'上半身Idle移行中・足幅判定待ち';
+        if(gait.collect_metrics?.before) lastStage+=` / 足幅 前 ${gait.collect_metrics.before.map(v=>v.toFixed(3)).join('/')}m → 後 ${gait.collect_metrics.after.map(v=>v.toFixed(3)).join('/')}m`;
+      }
       const phase={
         idle:'待機', moving:'移動', decelerating:'減速', final_step:'最後の一歩',
         waiting_for_foot_contact:'着地待ち', settled:'停止姿勢',
@@ -787,8 +810,17 @@ function animate(){
       tryRevealCharacter();
     }else if(owner.capture && currentPose){
       captureSettledIdle();
-    }else if(owner.mode==='settled' && groundedIdle){
+    }else if(['settled','collect_preparing'].includes(owner.mode) && groundedIdle){
       groundedIdle.update(delta);
+      const readyId=`${owner.moveId}:${owner.settleSeq}`;
+      if(owner.mode==='settled' && groundedIdle.ready && idleReadySent!==readyId && socket?.readyState===WebSocket.OPEN){
+        socket.send(JSON.stringify({type:'upper_idle_ready',move_id:owner.moveId,settle_seq:owner.settleSeq}));
+        idleReadySent=readyId;
+      }
+    }else if(owner.mode==='collecting'){
+      if(pose) applyPose(pose);
+      adjustStance();
+      groundedIdle?.blendUpperToLive((performance.now()-collectBlendStarted)/300);
     }else{
       if(owner.blend && groundedIdle){
         idleExit={pose:groundedIdle, startedAt:performance.now()};

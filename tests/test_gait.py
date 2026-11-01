@@ -380,3 +380,61 @@ def _width(pose):
 
 if __name__ == "__main__":
     unittest.main()
+class CollectSyncTests(unittest.TestCase):
+    def test_stale_ready_is_ignored(self):
+        cycle = LocomotionCycle(log=None)
+        cycle.begin_move([0, 0], True, 8)
+        pose, _, _ = standing_pose()
+        cycle.tick(observe(pose))
+        self.assertFalse(cycle.note_upper_idle_ready(7, cycle.settle_seq))
+        self.assertTrue(cycle.note_upper_idle_ready(8, cycle.settle_seq))
+
+    def test_ready_timeout_does_not_retry(self):
+        cycle = LocomotionCycle(log=None)
+        pose, _, _ = standing_pose()
+        cycle.begin_move([0, 0], True, 8)
+        for _ in range(165):
+            cycle.tick(observe(pose))
+        self.assertTrue(cycle.collect_checked)
+        self.assertFalse(cycle.collect_attempted)
+        self.assertEqual(cycle.phase, SETTLED)
+    def test_wide_stance_attempts_once_and_failure_preserves_pose(self):
+        from unittest.mock import patch
+        pose, _, _ = standing_pose()
+        cycle = LocomotionCycle(log=None)
+        cycle.begin_move([0, 0], True, 8)
+        cycle.tick(observe(pose))
+        original = cycle.settled_pose.copy()
+        seq = cycle.settle_seq
+        cycle.note_upper_idle_ready(8, seq)
+        with patch('locomotion_cycle.stance', return_value=(.4, .2)):
+            actions = [cycle.tick(observe(pose)) for _ in range(54)]
+        self.assertEqual(sum(a.begin_collect for a in actions), 1)
+        cycle.note_collect(None, {'accepted':False,'reason':'Rejected'}, 8, seq)
+        for _ in range(180):
+            self.assertFalse(cycle.tick(observe(pose)).begin_collect)
+        self.assertEqual(cycle.settle_seq, seq)
+        np.testing.assert_array_equal(cycle.settled_pose, original)
+
+    def test_success_commits_final_pose_and_new_move_cancels_old_result(self):
+        from unittest.mock import patch
+        pose, _, _ = standing_pose()
+        cycle = LocomotionCycle(log=None)
+        cycle.begin_move([0, 0], True, 8)
+        cycle.tick(observe(pose))
+        seq = cycle.settle_seq
+        cycle.note_upper_idle_ready(8, seq)
+        with patch('locomotion_cycle.stance', return_value=(.4, .2)):
+            for _ in range(54):
+                cycle.tick(observe(pose))
+        final = pose.copy()
+        final[0, 0] += .01
+        cycle.note_collect([pose.copy(), final], {'accepted':True}, 8, seq)
+        cycle.tick(observe(pose))
+        cycle.tick(observe(pose))
+        self.assertEqual(cycle.settle_seq, seq+1)
+        np.testing.assert_array_equal(cycle.settled_pose, final)
+        cycle.begin_move([1, 0], True, 9)
+        cycle.note_collect([final], {'accepted':True}, 8, seq)
+        self.assertEqual(cycle.phase, 'moving')
+        self.assertIsNone(cycle.settled_pose)

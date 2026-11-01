@@ -21,6 +21,8 @@ import numpy as np
 from locomotion_cycle import IDLE, LocomotionCycle, POSE_DONE, SETTLED
 from quats import RX90, quat_mul, quat_to_mat
 from soma_pose import overlay_pose
+from collect_stance import build_collect_target, validate_motion
+from step_cycle import choose_swing, foot_points
 from stop_phase import NavState, apply_nav_command
 
 UPDATE_HZ = 60.0
@@ -49,7 +51,7 @@ def _load_runtime():
     from motionbricks.model.contract import MODEL_POSES_PER_TOKEN, ModelRig
     from motionbricks.model.soma.contract import SOMA_N1_FP32_ONNX_PATH
     from motionbricks.model.soma.engine import MotionBricksSOMAEngine
-    from motionbricks.runtime.target_pose import TargetPoseInferenceParams, place_target_poses
+    from motionbricks.runtime.target_pose import IKPin, TargetPoseInferenceParams, place_target_poses
     from app.runtime.common.io.smart_primitive_document import SmartPrimitiveAssetPool
     from app.runtime.common.motion import LocomotionCommand, PlaybackSource
     from app.runtime.common.rig import load_rig_assets
@@ -62,6 +64,7 @@ def _load_runtime():
 
     return {
         "wp": wp,
+        "IKPin": IKPin,
         "MODEL_POSES_PER_TOKEN": MODEL_POSES_PER_TOKEN,
         "ModelRig": ModelRig,
         "SOMA_N1_FP32_ONNX_PATH": SOMA_N1_FP32_ONNX_PATH,
@@ -164,13 +167,60 @@ def _enter_arrival(character, planted, pose_id: str, rt, wp, facing: np.ndarray)
     return _request_custom_pose(character, pose_id, rt)
 
 
-def _drain(commands: Queue, nav: NavState):
+def _begin_collect(character, planted, swing, rt, wp, facing):
+    """独立キャラクターで全フレームを検証し、ライブ再生器には触れない。"""
+    names = list(character.skeleton.joint_names)
+    parents = [character.skeleton.joint_parent(i) for i in range(len(names))]
+    target_pose = build_collect_target(planted, names, swing, parents)
+    if target_pose is None:
+        other = 'right' if swing == 'left' else 'left'
+        target_pose = build_collect_target(planted, names, other, parents)
+        swing = other
+    if target_pose is None:
+        return None, dict(accepted=False, reason="No safe F001 collect target")
+    scratch = rt["SOMACharacter"](
+        character.engine, asset_pool=character.asset_pool,
+        modes=rt["DEFAULT_LOCOMOTION_MODES"],
+        idle_paths=(rt["DEFAULT_IDLE_CLIPS"][0],),
+        crouch_idle_paths=rt["DEFAULT_CROUCH_IDLE_CLIPS"],
+    )
+    _sync_pose(scratch, planted, wp, seed=True)
+    source = wp.array(np.repeat(target_pose[None].astype(np.float32), rt["MODEL_POSES_PER_TOKEN"], axis=0),
+                      dtype=wp.transform, device=character.engine.device)
+    target = wp.empty_like(source)
+    # 目標は既にワールド配置済みなので恒等配置を使い、二重変換を防ぐ。
+    rt["place_target_poses"](wp.vec3(0, 0, 0), wp.vec3(1, 0, 0), source, target, stream=character.engine.stream)
+    placed = target.numpy().reshape((-1, len(names), 7))[0]
+    support = 'right' if swing == 'left' else 'left'
+    a = foot_points(planted, parents, names)[support]
+    b = foot_points(placed, parents, names)[support]
+    if any(not np.allclose(a[part], b[part], atol=1e-5) for part in ('ankle', 'toe')):
+        return None, dict(accepted=False, reason="Target placement changed support foot")
+    mask = rt["IKPin"].RIGHT_FOOT if swing == 'left' else rt["IKPin"].LEFT_FOOT
+    scratch.generate_to_target_poses(target, rt["TargetPoseInferenceParams"](
+        transition_early_by_frames=0, num_poses_to_use=1, ik_pin_mask=mask))
+    frames = [planted.copy()]
+    for _ in range(int(4 / DT)):
+        # 状態機械による Idle 再生成を避け、公式の生成再生と IK Pin のみを進める。
+        scratch._sample_playback(DT)
+        frames.append(scratch.current_pose.numpy().reshape((-1, 7)).copy())
+        if scratch.time_to_transition() <= 0:
+            break
+    else:
+        return None, dict(accepted=False, reason="Collect playback timed out")
+    metrics = validate_motion(frames, planted, parents, names, swing)
+    return (frames if metrics['accepted'] else None), metrics
+
+
+def _drain(commands: Queue, nav: NavState, cycle=None):
     goal = None
     while True:
         try:
             cmd = commands.get_nowait()
         except Empty:
             return nav, goal
+        if cmd.get("type") == "upper_idle_ready" and cycle is not None:
+            cycle.note_upper_idle_ready(cmd.get("move_id"), cmd.get("settle_seq"))
         result = apply_nav_command(nav, cmd)
         if result.quit:
             return None
@@ -239,7 +289,7 @@ def worker(commands: Queue, publish):
         next_tick = time.monotonic()
         last_root = None
         while True:
-            drained = _drain(commands, nav)
+            drained = _drain(commands, nav, cycle)
             if drained is None:
                 return
             nav, moved = drained
@@ -273,7 +323,19 @@ def worker(commands: Queue, publish):
                 action.facing if action.facing is not None else character.movement.current_facing,
                 np.array([1.0, 0.0, 0.0], dtype=np.float32),
             )
-            if action.begin_arrival:
+            if action.begin_collect:
+                planted = action.pose
+                feet = foot_points(planted, parents, names)
+                swing = choose_swing(feet['left']['ankle'], feet['right']['ankle'], facing,
+                                     feet['left']['ankle'][2], feet['right']['ankle'][2])
+                try:
+                    collect_frames, metrics = _begin_collect(character, planted, swing, rt, wp, facing)
+                except Exception as exc:
+                    collect_frames, metrics = None, dict(accepted=False, reason=f"Collect generation failed: {exc}")
+                cycle.note_collect(collect_frames, metrics, cycle.move_id, cycle.settle_seq)
+                if not metrics.get('accepted'):
+                    print(f"Collect rejected: {metrics.get('reason')}", flush=True)
+            elif action.begin_arrival:
                 planted = action.pose if action.pose is not None else pose
                 try:
                     applied = _enter_arrival(character, planted, cycle.target_pose_id, rt, wp, facing)

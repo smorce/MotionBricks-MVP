@@ -75,6 +75,19 @@ export class GroundedIdle {
     }
   }
 
+  get ready() { return this.elapsed >= this.fadeSeconds; }
+
+  // 収束中は表示中の上半身だけをつなぎ、腰と脚は生成動作に任せる。
+  captureUpper() {
+    for (const bone of this.upper) bone.q.copy(bone.node.quaternion);
+  }
+
+  blendUpperToLive(weight) {
+    for (const bone of this.upper) {
+      bone.node.quaternion.slerpQuaternions(bone.q, bone.node.quaternion.clone(), ease(weight));
+    }
+  }
+
   // Starting a new walk: interpolate joint rotations only. Live root keeps moving.
   blendToLive(weight) {
     const t = ease(weight);

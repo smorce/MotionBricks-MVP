@@ -16,6 +16,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from collect_stance import COLLECT_WAIT_S, needs_collect, stance
 from foot_plant import PlantState, stance_width_m
 from gait_log import GAIT_LOG
 import gait_plan
@@ -49,6 +50,8 @@ POSE_DONE = "pose_done"
 
 CONTACT_WAIT_S = 0.75
 POSE_WAIT_S = 8.0
+COLLECT_PREPARING = "collect_preparing"
+COLLECTING = "collecting"
 
 
 @dataclass
@@ -56,6 +59,7 @@ class Action:
     phase: str
     walk: bool = False
     play: bool = False
+    begin_collect: bool = False
     begin_arrival: bool = False
     pose: np.ndarray | None = None
     seed: bool = False
@@ -90,7 +94,14 @@ class LocomotionCycle:
         self.last_plant_s: float | None = None
         self.settled_s: float | None = None
         self.contact_fallback = False
-        self.collected = False
+        self.collect_checked = False
+        self.collect_attempted = False
+        self.upper_idle_ready = False
+        self.collect_failure_reason = ""
+        self.collect_original_pose = None
+        self.collect_metrics = {}
+        self.collect_frames = []
+        self.collect_index = 0
         self.budget = 0.0
         self.walk_primed = False
         self.plants = PlantState()
@@ -121,13 +132,38 @@ class LocomotionCycle:
         self.last_plant_s = None
         self.settled_s = None
         self.contact_fallback = False
-        self.collected = False
+        self.collect_checked = False
+        self.collect_attempted = False
+        self.upper_idle_ready = False
+        self.collect_failure_reason = ""
+        self.collect_original_pose = None
+        self.collect_metrics = {}
+        self.collect_frames = []
+        self.collect_index = 0
         self.budget = 0.0
         self.walk_primed = False
         self.plants = PlantState()
         self._prev_points = None
         self.phase = MOVING
         self._event = "move"
+
+    def note_upper_idle_ready(self, move_id, settle_seq):
+        if self.phase != SETTLED or move_id != self.move_id or settle_seq != self.settle_seq or self.collect_checked:
+            return False
+        self.upper_idle_ready = True
+        return True
+
+    def note_collect(self, frames, metrics, move_id, settle_seq):
+        if self.phase != COLLECT_PREPARING or move_id != self.move_id or settle_seq != self.settle_seq:
+            return
+        self.collect_metrics = metrics
+        if frames is None or not metrics.get("accepted"):
+            self.phase = SETTLED
+            self.collect_failure_reason = metrics.get("reason", "Generation failed")
+            return
+        self.collect_frames = frames
+        self.collect_index = 0
+        self.phase = COLLECTING
 
     def note_pose_choice(self, pose_id: str) -> None:
         if self.hold_stance or self.arrival_started:
@@ -177,7 +213,17 @@ class LocomotionCycle:
         if self.mode is None:
             self._classify(pose, parents, names, distance)
 
-        if self.mode == "micro":
+        if self.phase == COLLECTING:
+            frame = self.collect_frames[self.collect_index]
+            self.collect_index += 1
+            if self.collect_index == len(self.collect_frames):
+                self._settle(frame, "collect_complete")
+            return self._action(frame, pose_out=frame, seed=True, obs=obs)
+
+        if self.phase == COLLECT_PREPARING:
+            return self._action(self.settled_pose, pose_out=self.settled_pose, obs=obs)
+
+        if self.mode == "micro" and self.phase != SETTLED:
             self._settle(pose, "micro")
             return self._hold_or_arrive(pose, obs)
 
@@ -263,23 +309,6 @@ class LocomotionCycle:
         if self.budget > 0.08:
             self.phase = MOVING
             return self._action(pose, pose_out=pose, obs=obs)
-        if not self.collected and self._sagittal(pose, parents, names) > 0.26:
-            self.collected = True
-            feet, _hips = _feet(pose, parents, names)
-            trailing = choose_swing(
-                feet["left"], feet["right"], facing_of(pose[0, 3:7]),
-                float(feet["left"][2]), float(feet["right"][2]),
-            )
-            self.step = begin_step(
-                pose, parents, names,
-                kind="collect",
-                direction_xy=facing_of(pose[0, 3:7])[:2],
-                distance_m=0.0,
-                swing=trailing,
-                speed_mps=0.0,
-            )
-            self.phase = FINAL_STEP
-            return self._advance_procedural(parents, names, obs)
         self._settle(pose, "plant")
         return self._hold_or_arrive(pose, obs)
 
@@ -287,6 +316,22 @@ class LocomotionCycle:
         shown = self.settled_pose if self.settled_pose is not None else pose
         seed = self._seed_pending
         self._seed_pending = False
+        if self.hold_stance and not self.collect_checked and self.settled_s is not None:
+            waited = self.clock - self.settled_s
+            if waited >= 2.5:
+                self.collect_checked = True
+                self.collect_failure_reason = "Upper idle readiness timed out"
+            elif waited >= COLLECT_WAIT_S and self.upper_idle_ready:
+                self.collect_checked = True
+                self._update_plants(obs, shown, self.parents, self.names, self._dt)
+                sagittal, width = stance(shown, self.parents, self.names)
+                if self.plants.left and self.plants.right and needs_collect(sagittal, width):
+                    self.collect_attempted = True
+                    self.collect_original_pose = shown.copy()
+                    self.phase = COLLECT_PREPARING
+                    action = self._action(shown, pose_out=shown, seed=seed, obs=obs)
+                    action.begin_collect = True
+                    return action
         if self.hold_stance or self.arrival_done:
             return self._action(shown, pose_out=shown, seed=seed, obs=obs)
         if self.pose_ready and not self.arrival_started:
@@ -398,6 +443,10 @@ class LocomotionCycle:
             "left_planted": self.plants.left,
             "right_planted": self.plants.right,
             "contact_source": self.plants.source,
+            "collect_checked": self.collect_checked,
+            "collect_attempted": self.collect_attempted,
+            "collect_failure_reason": self.collect_failure_reason,
+            "collect_metrics": self.collect_metrics,
             "left_x": round(float(points["left"]["ankle"][0]), 5),
             "left_y": round(float(points["left"]["ankle"][1]), 5),
             "left_z": round(float(points["left"]["ankle"][2]), 5),
@@ -424,6 +473,10 @@ class LocomotionCycle:
             "phase": self.phase,
             "contacts_available": row["contacts_available"],
             "contact_source": self.plants.source,
+            "collect_checked": self.collect_checked,
+            "collect_attempted": self.collect_attempted,
+            "collect_failure_reason": self.collect_failure_reason,
+            "collect_metrics": self.collect_metrics,
             "feet": {
                 "left": _foot_payload(points["left"], self.plants.left, self.plants.segment_m["left"]),
                 "right": _foot_payload(points["right"], self.plants.right, self.plants.segment_m["right"]),
