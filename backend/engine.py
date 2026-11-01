@@ -25,7 +25,7 @@ from quats import RX90, quat_mul, quat_to_mat
 from soma_pose import overlay_pose
 from collect_stance import build_collect_target, build_collect_lift, build_weight_target, valid_weight_shift, validate_motion
 from step_cycle import choose_swing, foot_points
-from final_stop import build_stop_target, validate_stop_motion
+from final_stop import build_stop_target, validate_stop_motion, stop_support, validate_stop_progress
 from stop_phase import NavState, apply_nav_command
 
 UPDATE_HZ = 60.0
@@ -246,13 +246,14 @@ def _begin_collect(character, planted, swing, rt, wp, facing, cancelled=None):
     return (frames if metrics['accepted'] else None), metrics
 
 
-def _begin_final_stop(character, pose, goal, rt, wp):
+def _begin_final_stop(character, pose, goal, rt, wp, destination=None):
     """歩行履歴から公式生成し、表示する前に停止区間全体を検証する。"""
     names = list(character.skeleton.joint_names)
     parents = [character.skeleton.joint_parent(i) for i in range(len(names))]
     target_pose = build_stop_target(pose, goal, parents, names)
     if target_pose is None:
-        return None, dict(accepted=False, reason='No safe final stop target')
+        return None, dict(accepted=False, stage='target', reason='No safe final stop target')
+    support = stop_support(pose, goal, parents, names)
     target = wp.array(np.repeat(target_pose[None].astype(np.float32), rt['MODEL_POSES_PER_TOKEN'], axis=0),
                       dtype=wp.transform, device=character.engine.device)
     frames = []
@@ -260,7 +261,7 @@ def _begin_final_stop(character, pose, goal, rt, wp):
         # 履歴を初期化せず、直前までの速度と歩行位相を生成器へ渡す。
         character.generate_to_target_poses(target, rt['TargetPoseInferenceParams'](
             transition_early_by_frames=0, num_poses_to_use=1,
-            ik_pin_mask=rt['IKPin'].LEFT_FOOT | rt['IKPin'].RIGHT_FOOT))
+            ik_pin_mask=rt['IKPin'].LEFT_FOOT if support == 'left' else rt['IKPin'].RIGHT_FOOT))
         for _ in range(int(4 / DT)):
             character._sample_playback(DT)
             frames.append(character.current_pose.numpy().reshape((-1, 7)).copy())
@@ -268,8 +269,14 @@ def _begin_final_stop(character, pose, goal, rt, wp):
             if character.time_to_transition() <= 0:
                 break
         else:
-            return None, dict(accepted=False, reason='Final stop generation timed out')
+            return None, dict(accepted=False, stage='generation', reason='Final stop generation timed out')
         metrics = validate_stop_motion(frames, pose, goal, parents, names)
+        metrics.update(stage='validation', support=support)
+        if metrics['accepted']:
+            reason = validate_stop_progress(frames, pose, goal if destination is None else destination, support, parents, names)
+            if reason:
+                metrics.update(accepted=False, reason=reason)
+        metrics['travel_distance_m'] = float(np.linalg.norm(frames[-1][0, :2] - pose[0, :2])) if frames else 0.0
         return (frames if metrics['accepted'] else None), metrics
     finally:
         _sync_pose(character, pose, wp, seed=True)
@@ -433,10 +440,10 @@ def worker(commands: Queue, publish):
             )
             if action.begin_final_stop:
                 try:
-                    stop_frames, stop_metrics = _begin_final_stop(character, pose, cycle.goal, rt, wp)
+                    stop_frames, stop_metrics = _begin_final_stop(character, action.pose, cycle.final_stop_goal, rt, wp, destination=cycle.goal)
                 except Exception as exc:
                     _sync_pose(character, pose, wp, seed=True)
-                    stop_frames, stop_metrics = None, dict(accepted=False, reason=f'Final stop generation failed: {exc}')
+                    stop_frames, stop_metrics = None, dict(accepted=False, stage='generation', reason=f'Final stop generation failed: {exc}')
                 cycle.note_final_stop(stop_frames, stop_metrics)
                 character.movement.reset_desired_velocity()
             elif action.begin_stop_recovery:

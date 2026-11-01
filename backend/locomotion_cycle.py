@@ -47,6 +47,7 @@ FINAL_STEP = "final_step"
 WAITING = "waiting_for_foot_contact"
 CONTACT_RECOVERY = "contact_recovery"
 STOP_FAILED = "stop_failed"
+STOP_RETRY = "stop_retry"
 SETTLED = "settled"
 POSE_PENDING = "pose_pending"
 POSE_TRANSITION = "pose_transition"
@@ -128,6 +129,9 @@ class LocomotionCycle:
         self.final_stop_frames = []
         self.final_stop_index = 0
         self.final_stop_metrics = {}
+        self.final_stop_goal = None
+        self.stop_retry_count = 0
+        self.last_stop_distance_m = 0.0
         self._ground_z = 0.0
         self._event = ""
         self._dt = 1.0 / 60.0
@@ -178,6 +182,10 @@ class LocomotionCycle:
         self.final_stop_frames = []
         self.final_stop_index = 0
         self.final_stop_metrics = {}
+        self.final_stop_goal = self.goal.copy()
+        self.stop_retry_count = 0
+        self.stop_prediction_m = 0.0
+        self._flight = {"left": 0.0, "right": 0.0}
         self.phase = MOVING
         self._event = "move"
 
@@ -190,11 +198,13 @@ class LocomotionCycle:
     def note_final_stop(self, frames, metrics):
         self.final_stop_metrics = metrics
         if frames is None or not metrics.get('accepted'):
-            self.phase = STOP_FAILED
+            self.phase = STOP_RETRY if self.stop_retry_count == 0 else STOP_FAILED
             self.stop_failure_reason = metrics.get('reason', 'Final stop generation failed')
             return
         self.final_stop_frames = frames
         self.final_stop_index = 0
+        self.stop_failure_reason = ""
+        self.last_stop_distance_m = float(metrics.get('travel_distance_m', 0.0))
         self.phase = FINAL_STEP
 
     def stage_collect(self, frames, metrics, move_id, settle_seq):
@@ -295,6 +305,24 @@ class LocomotionCycle:
             self._classify(pose, parents, names, distance)
         self._update_plants(obs, pose, parents, names, dt)
 
+        if self.phase == STOP_RETRY:
+            if self.recovery_pose is None:
+                self.recovery_pose = pose.copy()
+            pose = self.recovery_pose
+            delta = self.goal[:2] - pose[0, :2]
+            remaining = float(np.linalg.norm(delta))
+            if self.stop_retry_count >= 8 or remaining <= MICRO_M:
+                self.phase = STOP_FAILED
+                self.stop_failure_reason = self.stop_failure_reason or "Stop recovery exhausted without a validated landing"
+            else:
+                self.stop_retry_count += 1
+                self.final_stop_goal = self.goal.copy()
+                self.final_stop_goal[:2] = pose[0, :2] + delta * min(1.0, .25 / remaining)
+                self.phase = FINAL_STEP
+                action = self._action(pose, pose_out=pose, obs=obs)
+                action.begin_final_stop = True
+                return action
+
         if self.phase == STOP_FAILED:
             if self.recovery_pose is None:
                 self.recovery_pose = pose.copy()
@@ -325,7 +353,12 @@ class LocomotionCycle:
             frame = self.final_stop_frames[self.final_stop_index]
             self.final_stop_index += 1
             if self.final_stop_index == len(self.final_stop_frames):
-                self._settle(frame, 'final_stop_complete')
+                if np.linalg.norm(frame[0, :2] - self.goal[:2]) <= MICRO_M:
+                    self._settle(frame, 'final_stop_complete')
+                else:
+                    self.phase = STOP_RETRY
+                    self.recovery_pose = frame.copy()
+                    self.final_stop_frames = []
             return self._action(frame, pose_out=frame, seed=self.phase == SETTLED, obs=obs)
 
         if self.phase == FINAL_STEP and not gait_plan.USE_PROCEDURAL_STEP:
@@ -348,7 +381,8 @@ class LocomotionCycle:
         if not gait_plan.USE_PROCEDURAL_STEP:
             self.step = None
 
-        self.stop_prediction_m = max(self._flight.values()) * max(0.0, float(obs.get("actual_speed") or 0.0))
+        predicted = max(self._flight.values()) * max(0.0, float(obs.get("actual_speed") or 0.0))
+        self.stop_prediction_m = min(self.choice.final_window_m, max(predicted, self.last_stop_distance_m))
         stop_at = self.choice.final_window_m if gait_plan.USE_PROCEDURAL_STEP else max(MICRO_M, self.stop_prediction_m)
         if self.stop_requested_s is None and self.mode == "walk" and distance > stop_at:
             self.phase = DECELERATING if distance <= DECEL_ZONE_M else MOVING

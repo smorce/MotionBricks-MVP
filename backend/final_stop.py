@@ -6,6 +6,39 @@ from quats import quat_mul
 from collect_stance import valid_pose, knees_valid, knees_continuous
 
 
+def stop_support(pose, goal, parents, names):
+    """低い足を支持足とし、同じ高さなら進行方向の後足を選ぶ。"""
+    points = foot_points(pose, parents, names)
+    heights = {s: min(points[s][p][2] for p in ('ankle', 'toe')) for s in points}
+    if abs(heights['left'] - heights['right']) > .015:
+        return min(heights, key=heights.get)
+    direction = np.asarray(goal)[:2] - pose[0, :2]
+    return min(('left', 'right'), key=lambda s: float(points[s]['ankle'][:2] @ direction))
+
+
+def validate_stop_progress(frames, original, destination, support, parents, names):
+    """回復区間の前進量、通過、支持足の累積滑りを検証する。"""
+    delta = np.asarray(destination)[:2] - original[0, :2]
+    distance = float(np.linalg.norm(delta))
+    roots = np.asarray(frames)[:, 0, :2]
+    if distance > .08:
+        projections = (roots - original[0, :2]) @ (delta / distance)
+        if (np.any(projections < -.02) or np.any(projections > distance + .02)
+                or np.any(np.linalg.norm(roots - np.asarray(destination)[:2], axis=1) > distance + .02)):
+            return 'Stop trajectory passed destination or moved backward'
+        if distance - np.linalg.norm(roots[-1] - np.asarray(destination)[:2]) < .01:
+            return 'Stop recovery made insufficient progress'
+    start = foot_points(original, parents, names)[support]
+    ground = min(start[p][2] for p in ('ankle', 'toe'))
+    for frame in frames:
+        foot = foot_points(frame, parents, names)[support]
+        if min(foot[p][2] for p in ('ankle', 'toe')) > ground + .02:
+            break
+        if any(np.linalg.norm(foot[p][:2] - start[p][:2]) > .02 for p in ('ankle', 'toe')):
+            return 'Stop support foot drifted'
+    return ''
+
+
 def build_stop_target(original, goal, parents, names):
     raw = overlay_pose('F001', names, original)
     if raw is None:
