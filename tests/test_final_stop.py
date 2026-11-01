@@ -5,10 +5,46 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 from test_gait import standing_pose, observe
 from locomotion_cycle import LocomotionCycle, FINAL_STEP, SETTLED
-from final_stop import build_stop_target, validate_stop_motion, validate_stop_progress
+from final_stop import build_stop_target, validate_stop_motion, validate_stop_progress, check_bone_lengths
 
 
 class FinalStopTests(unittest.TestCase):
+    def test_bone_tolerance_combines_absolute_and_relative_error(self):
+        pose, _, names = standing_pose()
+        joint = names.index('LeftShin')
+        length = np.linalg.norm(pose[joint, :3])
+        tolerance = .002 + .01 * length
+        frames = np.repeat(pose[None], 4, axis=0)
+        frames[:, joint, :3] *= 1 + (tolerance - 1e-6) / length
+        self.assertTrue(check_bone_lengths(frames, pose, names)['bone_lengths_valid'])
+        frames[:, joint, :3] = pose[joint, :3] * (1 + (tolerance + 1e-6) / length)
+        self.assertFalse(check_bone_lengths(frames, pose, names)['bone_lengths_valid'])
+
+    def test_local_direction_change_preserving_length_is_accepted(self):
+        pose, parents, names = standing_pose()
+        frames = np.repeat(pose[None], 4, axis=0)
+        joint = names.index('LeftToeBase')
+        frames[:, joint, :3] = [.079, np.sqrt(.08**2 - .079**2), -.02]
+        metrics = validate_stop_motion(frames, pose, [0, 0], parents, names)
+        self.assertTrue(metrics['accepted'], metrics)
+        self.assertAlmostEqual(metrics['max_bone_length_error_m'], 0)
+        self.assertGreater(metrics['bone_length_diagnostics'][joint - 1]['local_position_delta_m'], .01)
+
+    def test_length_change_reports_joint_frame_and_serializable_diagnostics(self):
+        import json
+        pose, parents, names = standing_pose()
+        frames = np.repeat(pose[None], 4, axis=0)
+        joint = names.index('LeftToeBase')
+        frames[2, joint, 0] += .03
+        metrics = validate_stop_motion(frames, pose, [0, 0], parents, names)
+        self.assertEqual(metrics['reason'], 'Stop bone lengths changed')
+        self.assertEqual(metrics['failed_joint'], 'LeftToeBase')
+        self.assertEqual(metrics['failed_frame'], 2)
+        self.assertAlmostEqual(metrics['local_position_delta_m'], .03)
+        self.assertGreater(metrics['bone_length_delta_m'], .02)
+        self.assertEqual(metrics['bone_length_delta_m'], metrics['max_bone_length_error_m'])
+        json.dumps(metrics, allow_nan=False)
+
     def test_recovery_replays_segments_and_only_settles_at_destination(self):
         pose, _, _ = standing_pose()
         cycle = LocomotionCycle(log=None)
@@ -141,6 +177,7 @@ class FinalStopTests(unittest.TestCase):
         self.assertEqual(len(frames), 1)
         character.clear_ik_pins.assert_called_once()
         self.assertIn(character.generate_to_target_poses.call_args.args[1]['ik_pin_mask'], (4, 8))
+        self.assertEqual(metrics['ik_pin_mask'], character.generate_to_target_poses.call_args.args[1]['ik_pin_mask'])
 
     def test_official_generation_exception_restores_pose(self):
         from engine import _begin_final_stop

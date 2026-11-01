@@ -16,5 +16,9 @@ export function formatGaitStatus(gait) {
     gait.final_stop_metrics?.stage,
     gait.final_stop_metrics?.reason && `final_stop_metrics.reason=${gait.final_stop_metrics.reason}`,
     gait.stop_failure_reason && `stop_failure_reason=${gait.stop_failure_reason}`,
+    ...['left', 'right'].map(side => {
+      const height = gait.foot_height_diagnostics?.[side];
+      return height && `${side}: SOMA足先=${height.soma_height_m.toe.toFixed(3)}m VRM足先=${height.vrm_height_m.toe.toFixed(3)}m 差=${height.toe_delta_m.toFixed(3)}m`;
+    }),
   ].filter(Boolean).join(' ');
 }

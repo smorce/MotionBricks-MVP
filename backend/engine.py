@@ -254,6 +254,7 @@ def _begin_final_stop(character, pose, goal, rt, wp, destination=None):
     if target_pose is None:
         return None, dict(accepted=False, stage='target', reason='No safe final stop target')
     support = stop_support(pose, goal, parents, names)
+    mask = rt['IKPin'].LEFT_FOOT if support == 'left' else rt['IKPin'].RIGHT_FOOT
     target = wp.array(np.repeat(target_pose[None].astype(np.float32), rt['MODEL_POSES_PER_TOKEN'], axis=0),
                       dtype=wp.transform, device=character.engine.device)
     frames = []
@@ -261,7 +262,7 @@ def _begin_final_stop(character, pose, goal, rt, wp, destination=None):
         # 履歴を初期化せず、直前までの速度と歩行位相を生成器へ渡す。
         character.generate_to_target_poses(target, rt['TargetPoseInferenceParams'](
             transition_early_by_frames=0, num_poses_to_use=1,
-            ik_pin_mask=rt['IKPin'].LEFT_FOOT if support == 'left' else rt['IKPin'].RIGHT_FOOT))
+            ik_pin_mask=mask))
         for _ in range(int(4 / DT)):
             character._sample_playback(DT)
             frames.append(character.current_pose.numpy().reshape((-1, 7)).copy())
@@ -271,7 +272,7 @@ def _begin_final_stop(character, pose, goal, rt, wp, destination=None):
         else:
             return None, dict(accepted=False, stage='generation', reason='Final stop generation timed out')
         metrics = validate_stop_motion(frames, pose, goal, parents, names)
-        metrics.update(stage='validation', support=support)
+        metrics.update(stage='validation', support=support, ik_pin_mask=int(mask))
         if metrics['accepted']:
             reason = validate_stop_progress(frames, pose, goal if destination is None else destination, support, parents, names)
             if reason:

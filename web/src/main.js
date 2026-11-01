@@ -11,6 +11,7 @@ import {emptyOwner, reduceOwner, shouldApplyStance} from './poseOwner.js';
 import {isSceneBootReady, spawnOffset} from './bootGate.js';
 import {GaitDebug} from './gaitDebug.js';
 import {formatGaitStatus} from './gaitView.js';
+import {compareFootHeights} from './footHeightDiagnostics.js';
 import idleMotionUrl from '../../motions/idle.vrma?url';
 import idleBreakMotionUrl from '../../motions/idle_06.vrma?url';
 import {buildKit} from '../../ModernRestaurantCafekit/kit.mjs';
@@ -909,6 +910,17 @@ function animate(){
     }
     if(sceneReady) gaitDebug.update(gait, rig, spawn, FLOOR_TOP);
     vrm.update(delta);
+    if(sceneReady && gait?.feet && rig?.rest?.[0]){
+      vrm.scene.updateMatrixWorld(true);
+      const sample={};
+      for(const side of ['left','right']){
+        const foot=vrm.humanoid.getRawBoneNode(`${side}Foot`);
+        const toe=vrm.humanoid.getRawBoneNode(`${side}Toes`);
+        if(foot && toe) sample[side]={foot:foot.getWorldPosition(new THREE.Vector3()).toArray(),toe:toe.getWorldPosition(new THREE.Vector3()).toArray()};
+      }
+      gait.foot_height_diagnostics=sample.left && sample.right
+        ? compareFootHeights(gait.feet, sample, rig.rest[0][2], FLOOR_TOP) : null;
+    }
   }
   if(place) place.tick(clock.elapsedTime);
   if(vrm && look && sceneReady) look.follow(vrm.scene);

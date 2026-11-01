@@ -56,11 +56,41 @@ def build_stop_target(original, goal, parents, names):
     return target if valid_pose(target) and knees_valid(target, parents, names) else None
 
 
+def check_bone_lengths(frames, original, names, atol_m=.002, rtol=.01):
+    """ローカル並進のノルムを比較し、各骨の最大誤差を記録する。許容値は暫定。"""
+    frames = np.asarray(frames, dtype=np.float64)
+    original = np.asarray(original, dtype=np.float64)
+    lengths = np.linalg.norm(original[1:, :3], axis=1)
+    generated = np.linalg.norm(frames[:, 1:, :3], axis=2)
+    errors = np.abs(generated - lengths)
+    tolerances = atol_m + rtol * lengths
+    local_deltas = np.linalg.norm(frames[:, 1:, :3] - original[None, 1:, :3], axis=2)
+    failed = np.argwhere(errors > tolerances)
+    diagnostics = []
+    for bone, name in enumerate(names[1:]):
+        frame = int(np.argmax(errors[:, bone]))
+        diagnostics.append(dict(joint=name, frame=frame,
+                                local_position_delta_m=float(np.max(local_deltas[:, bone])),
+                                bone_length_delta_m=float(errors[frame, bone]),
+                                tolerance_m=float(tolerances[bone])))
+    result = dict(bone_lengths_valid=not len(failed),
+                  max_bone_length_error_m=float(np.max(errors)),
+                  bone_length_atol_m=atol_m, bone_length_rtol=rtol,
+                  bone_length_diagnostics=diagnostics)
+    if len(failed):
+        frame, bone = map(int, failed[0])
+        result.update(failed_joint=names[bone + 1], failed_frame=frame,
+                      local_position_delta_m=float(local_deltas[frame, bone]),
+                      bone_length_delta_m=float(errors[frame, bone]))
+    return result
+
+
 def validate_stop_motion(frames, original, goal, parents, names):
     frames = np.asarray(frames)
     result = dict(accepted=False, reason='Invalid stop motion')
     if len(frames) < 4 or frames.shape[1:] != original.shape or not all(valid_pose(p) for p in frames):
         return result
+    result.update(check_bone_lengths(frames, original, names))
     points = [foot_points(p, parents, names) for p in frames]
     start = foot_points(original, parents, names)
     ground = min(start[s][p][2] for s in ('left', 'right') for p in ('ankle', 'toe'))
@@ -72,7 +102,7 @@ def validate_stop_motion(frames, original, goal, parents, names):
         result['reason'] = 'Stop root discontinuity'
     elif any(not knees_valid(p, parents, names) or not knees_continuous(p, original, parents, names) for p in frames):
         result['reason'] = 'Invalid stop knee bend'
-    elif any(not np.allclose(p[1:, :3], original[1:, :3], atol=1e-4) for p in frames):
+    elif not result['bone_lengths_valid']:
         result['reason'] = 'Stop bone lengths changed'
     elif any(p[s][part][2] < ground-.02 for p in points for s in ('left', 'right') for part in ('ankle', 'toe')):
         result['reason'] = 'Stop foot penetrated ground'
