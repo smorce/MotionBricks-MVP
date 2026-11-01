@@ -1,7 +1,7 @@
 """公式 Scene Preview の SOMA キャラクターで、クリック先まで歩いて止まる。
 
 線形移動は Walk ブレンド（入力の長さ 1）だけで使う。短い距離と最後の一歩は
-LocomotionCycle の踏み出しが姿勢を所有し、着地後は公式 Idle へ入れない。
+公式の目標姿勢生成を事前検証して再生し、着地後は公式 Idle へ入れない。
 IdleState.enter は待機クリップの開始姿勢へ生成するため、足幅が変わる。
 
 推論はこのプロセスの NVlabs/motionbricks 環境で行う。ルート座標は目標へ吸着しない。
@@ -23,8 +23,9 @@ import numpy as np
 from locomotion_cycle import IDLE, LocomotionCycle, POSE_DONE, SETTLED
 from quats import RX90, quat_mul, quat_to_mat
 from soma_pose import overlay_pose
-from collect_stance import build_collect_target, build_collect_lift, validate_motion
+from collect_stance import build_collect_target, build_collect_lift, build_weight_target, valid_weight_shift, validate_motion
 from step_cycle import choose_swing, foot_points
+from final_stop import build_stop_target, validate_stop_motion
 from stop_phase import NavState, apply_nav_command
 
 UPDATE_HZ = 60.0
@@ -216,20 +217,63 @@ def _begin_collect(character, planted, swing, rt, wp, facing, cancelled=None):
                 return segment
         raise RuntimeError("Collect playback timed out")
 
-    frames = [planted.copy(), *generate_segment(target)]
+    weight = build_weight_target(planted, parents, names, swing)
+    # 公式補正器で開始時の両足を保つ目標を作る。独自の脚IKは使わない。
+    both = rt["IKPin"].LEFT_FOOT | rt["IKPin"].RIGHT_FOOT
+    pin_pose = wp.array(planted.astype(np.float32), dtype=wp.transform, device=character.engine.device)
+    weight_pose = wp.array(weight.astype(np.float32), dtype=wp.transform, device=character.engine.device)
+    corrector = scratch._target_pose_ik_corrector
+    corrector.capture_pins(pin_pose, both, stream=character.engine.stream)
+    corrector.apply(weight_pose, 1.0, stream=character.engine.stream)
+    weight = weight_pose.numpy().reshape((-1, 7))
+    weight_target = wp.array(np.repeat(weight[None].astype(np.float32), rt["MODEL_POSES_PER_TOKEN"], axis=0), dtype=wp.transform, device=character.engine.device)
+    params = rt["TargetPoseInferenceParams"](transition_early_by_frames=0, num_poses_to_use=1,
+        ik_pin_mask=rt["IKPin"].LEFT_FOOT | rt["IKPin"].RIGHT_FOOT)
+    weight_frames = generate_segment(weight_target)
+    if not valid_weight_shift(weight_frames, planted, parents, names, swing):
+        return None, dict(accepted=False, reason="Weight shift did not preserve both contacts")
+    params = rt["TargetPoseInferenceParams"](transition_early_by_frames=0, num_poses_to_use=1, ik_pin_mask=mask)
+    a = foot_points(planted, parents, names)[swing]['ankle']
+    b = foot_points(target_pose, parents, names)[swing]['ankle']
+    intermediate = build_collect_lift(weight_frames[-1], parents, names, swing, float(np.linalg.norm(b[:2] - a[:2])))
+    if intermediate is None:
+        return None, dict(accepted=False, reason="No safe lift target")
+    lift_target = wp.array(np.repeat(intermediate[None].astype(np.float32), rt["MODEL_POSES_PER_TOKEN"], axis=0), dtype=wp.transform, device=character.engine.device)
+    frames = [planted.copy(), *weight_frames, *generate_segment(lift_target), *generate_segment(target)]
     metrics = validate_motion(frames, planted, parents, names, swing)
-    metrics["stages"] = 1
-    if metrics.get("lift_m", 0) < .025 and metrics.get("reason") in ("Swing foot did not lift", "Support foot slip exceeds limit"):
-        intermediate = build_collect_lift(planted, parents, names, swing)
-        if intermediate is not None:
-            _sync_pose(scratch, planted, wp, seed=True)
-            lift_target = wp.array(np.repeat(intermediate[None].astype(np.float32), rt["MODEL_POSES_PER_TOKEN"], axis=0),
-                                   dtype=wp.transform, device=character.engine.device)
-            frames = [planted.copy(), *generate_segment(lift_target), *generate_segment(target)]
-            metrics = validate_motion(frames, planted, parents, names, swing)
-            metrics["stages"] = 2
+    metrics["stages"] = 3
     metrics["swing"] = swing
     return (frames if metrics['accepted'] else None), metrics
+
+
+def _begin_final_stop(character, pose, goal, rt, wp):
+    """歩行履歴から公式生成し、表示する前に停止区間全体を検証する。"""
+    names = list(character.skeleton.joint_names)
+    parents = [character.skeleton.joint_parent(i) for i in range(len(names))]
+    target_pose = build_stop_target(pose, goal, parents, names)
+    if target_pose is None:
+        return None, dict(accepted=False, reason='No safe final stop target')
+    target = wp.array(np.repeat(target_pose[None].astype(np.float32), rt['MODEL_POSES_PER_TOKEN'], axis=0),
+                      dtype=wp.transform, device=character.engine.device)
+    frames = []
+    try:
+        # 履歴を初期化せず、直前までの速度と歩行位相を生成器へ渡す。
+        character.generate_to_target_poses(target, rt['TargetPoseInferenceParams'](
+            transition_early_by_frames=0, num_poses_to_use=1,
+            ik_pin_mask=rt['IKPin'].LEFT_FOOT | rt['IKPin'].RIGHT_FOOT))
+        for _ in range(int(4 / DT)):
+            character._sample_playback(DT)
+            frames.append(character.current_pose.numpy().reshape((-1, 7)).copy())
+            character.player.record_pose(DT, character.current_pose)
+            if character.time_to_transition() <= 0:
+                break
+        else:
+            return None, dict(accepted=False, reason='Final stop generation timed out')
+        metrics = validate_stop_motion(frames, pose, goal, parents, names)
+        return (frames if metrics['accepted'] else None), metrics
+    finally:
+        _sync_pose(character, pose, wp, seed=True)
+        character.clear_ik_pins()
 
 
 
@@ -387,7 +431,15 @@ def worker(commands: Queue, publish):
                 action.facing if action.facing is not None else character.movement.current_facing,
                 np.array([1.0, 0.0, 0.0], dtype=np.float32),
             )
-            if action.begin_stop_recovery:
+            if action.begin_final_stop:
+                try:
+                    stop_frames, stop_metrics = _begin_final_stop(character, pose, cycle.goal, rt, wp)
+                except Exception as exc:
+                    _sync_pose(character, pose, wp, seed=True)
+                    stop_frames, stop_metrics = None, dict(accepted=False, reason=f'Final stop generation failed: {exc}')
+                cycle.note_final_stop(stop_frames, stop_metrics)
+                character.movement.reset_desired_velocity()
+            elif action.begin_stop_recovery:
                 try:
                     applied = _enter_arrival(character, action.pose, "F001", rt, wp, facing)
                     cycle.note_stop_recovery(applied, character.time_to_transition() if applied else 0.0)
@@ -426,7 +478,7 @@ def worker(commands: Queue, publish):
             if step_ms >= _SLOW_STEP_MS:
                 last_generate_ms = step_ms
             shown = character.current_pose.numpy().reshape((-1, 7)).copy()
-            last_root = shown[0, :2].copy()
+            last_root = pose[0, :2].copy()
             distance = None if goal is None else float(np.linalg.norm(goal[:2] - shown[0, :2]))
             if _arrival_due(nav, cycle, goal is not None):
                 publish(
@@ -447,7 +499,7 @@ def worker(commands: Queue, publish):
                         "type": "stop_triggered",
                         "distance_m": distance,
                         "speed_mps": round(root_speed, 3),
-                        "threshold_m": None if cycle.choice is None else round(cycle.choice.final_window_m, 3),
+                        "threshold_m": round(max(.08, cycle.stop_prediction_m), 3),
                         "mode": cycle.mode,
                     }
                 )

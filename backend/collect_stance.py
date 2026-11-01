@@ -90,7 +90,7 @@ def build_collect_target(settled, joint_names, swing, parents=None):
     return target
 
 
-def build_collect_lift(settled, parents, names, swing):
+def build_collect_lift(settled, parents, names, swing, distance_m=.2):
     """支持足を動かさず、遊脚の回転だけで中間目標を探す。"""
     points = foot_points(settled, parents, names)
     joint = names.index(swing.title() + "Leg")
@@ -98,15 +98,42 @@ def build_collect_lift(settled, parents, names, swing):
     axis_world = np.cross([0, 0, 1], facing_of(settled[0, 3:]))
     parent = parents[joint]
     axis = world_rot[parent].T @ axis_world if parent >= 0 else axis_world
-    for degrees in (20, -20, 35, -35, 50, -50):
+    height = float(np.clip(distance_m * .25, .05, .08))
+    for degrees in (sign * angle for angle in range(1, 61) for sign in (1, -1)):
         angle = np.deg2rad(degrees) / 2
         rotation = np.r_[axis * np.sin(angle), np.cos(angle)]
         candidate = settled.copy()
         candidate[joint, 3:] = quat_mul(rotation, settled[joint, 3:])
         lifted = foot_points(candidate, parents, names)
-        if knees_valid(candidate, parents, names) and min(lifted[swing][part][2] - points[swing][part][2] for part in ('ankle', 'toe')) >= .04:
+        clearance = [lifted[swing][part][2] - points[swing][part][2] for part in ('ankle', 'toe')]
+        if knees_valid(candidate, parents, names) and knees_continuous(candidate, settled, parents, names) and min(clearance) >= height and max(clearance) <= .09:
             return candidate
     return None
+
+
+def build_weight_target(planted, parents, names, swing):
+    """関節は変更せず、公式生成器へ支持足方向のルート目標を渡す。"""
+    support = 'right' if swing == 'left' else 'left'
+    point = foot_points(planted, parents, names)[support]['ankle'][:2]
+    delta = point - planted[0, :2]
+    target = planted.copy()
+    length = np.linalg.norm(delta)
+    if length > 1e-6:
+        target[0, :2] += delta / length * min(.03, length * .25)
+    return target
+
+
+def valid_weight_shift(frames, original, parents, names, swing):
+    start = foot_points(original, parents, names)
+    support = 'right' if swing == 'left' else 'left'
+    if not frames or not all(valid_pose(p) and knees_valid(p, parents, names) and knees_continuous(p, original, parents, names) for p in frames):
+        return False
+    for pose in frames:
+        points = foot_points(pose, parents, names)
+        if any(np.linalg.norm(points[s][part] - start[s][part]) > .02 for s in ('left', 'right') for part in ('ankle', 'toe')):
+            return False
+    point = start[support]['ankle'][:2]
+    return np.linalg.norm(frames[-1][0, :2] - point) < np.linalg.norm(original[0, :2] - point) - .005
 
 
 def validate_motion(frames, original, parents, names, swing, slip_limit=SUPPORT_SLIP_M):
@@ -120,7 +147,12 @@ def validate_motion(frames, original, parents, names, swing, slip_limit=SUPPORT_
     slip = max(float(np.linalg.norm(p[support][part][:2] - start[support][part][:2])) for p in points for part in ('ankle', 'toe'))
     lift = max(min(float(p[swing][part][2] - start[swing][part][2]) for part in ('ankle', 'toe')) for p in points)
     result.update(support_slip_m=slip, lift_m=lift, before=stance(original, parents, names), after=stance(frames[-1], parents, names))
-    if slip > slip_limit:
+    offsets = np.linalg.norm(frames[:, 0, :2] - original[0, :2], axis=1)
+    result.update(root_displacement_m=float(offsets[-1]), root_excursion_m=float(max(offsets)),
+                  root_path_m=float(np.linalg.norm(np.diff(frames[:, 0, :2], axis=0), axis=1).sum()))
+    if max(offsets) > .08:
+        result['reason'] = 'Root excursion exceeds limit'
+    elif slip > slip_limit:
         result['reason'] = 'Support foot slip exceeds limit'
     elif lift < .025:
         result['reason'] = 'Swing foot did not lift'

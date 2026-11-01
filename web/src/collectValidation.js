@@ -17,7 +17,11 @@ export function validateVrmSamples(samples, baseline, swing, {slipLimit=.02,minL
   result.support_slip_m=Math.max(...samples.flatMap(s=>['foot','toe'].map(k=>horizontal(s[support][k],baseline[support][k]))));
   result.lift_m=Math.max(...samples.map(s=>Math.min(...['foot','toe'].map(k=>s[swing][k][1]-baseline[swing][k][1]))));
   const end=samples.at(-1);
+  result.root_displacement_m=horizontal(end.root,baseline.root);
+  result.root_excursion_m=Math.max(...samples.map(s=>horizontal(s.root,baseline.root)));
+  result.root_path_m=samples.reduce((sum,s,i)=>sum+horizontal(s.root,i?samples[i-1].root:baseline.root),0);
   const reject=reason=>({...result,reason});
+  if(result.root_excursion_m>.08) return reject('VRM root excursion exceeds limit');
   if(result.support_slip_m>slipLimit) return reject('VRM support foot slip exceeds limit');
   if(result.lift_m<minLift) return reject('VRM swing foot did not lift');
   if(['foot','toe'].some(k=>Math.abs(end[swing][k][1]-baseline[swing][k][1])>.04)) return reject('VRM swing foot did not land');

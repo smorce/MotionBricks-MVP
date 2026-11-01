@@ -7,6 +7,31 @@ from collect_stance import needs_collect, build_collect_target, validate_motion
 from test_gait import standing_pose
 
 class CollectTests(unittest.TestCase):
+    def test_weight_shift_requires_body_motion_with_both_contacts_preserved(self):
+        from unittest.mock import patch
+        from collect_stance import build_weight_target, valid_weight_shift
+        from step_cycle import foot_points
+        pose, parents, names = standing_pose()
+        target = build_weight_target(pose, parents, names, 'left')
+        np.testing.assert_array_equal(target[1:], pose[1:])
+        self.assertFalse(valid_weight_shift([pose.copy()]*4, pose, parents, names, 'left'))
+        start = foot_points(pose, parents, names)
+        with patch('collect_stance.foot_points', return_value=start):
+            self.assertTrue(valid_weight_shift([target], pose, parents, names, 'left'))
+        shifted = {s:{p:v.copy() for p,v in parts.items()} for s,parts in start.items()}
+        shifted['left']['ankle'][0] += .03
+        with patch('collect_stance.foot_points', side_effect=[start,shifted]):
+            self.assertFalse(valid_weight_shift([target], pose, parents, names, 'left'))
+
+    def test_cumulative_root_drift_is_reported_and_rejected(self):
+        pose, parents, names = standing_pose()
+        frames = np.repeat(pose[None], 30, axis=0)
+        frames[:, 0, 0] += np.linspace(0, .2, 30)
+        result = validate_motion(frames, pose, parents, names, 'left')
+        self.assertAlmostEqual(result['root_displacement_m'], .2)
+        self.assertAlmostEqual(result['root_path_m'], .2)
+        self.assertIn('Root', result['reason'])
+
     def test_thresholds(self):
         self.assertFalse(needs_collect(.26, .34))
         self.assertTrue(needs_collect(.261, .2))

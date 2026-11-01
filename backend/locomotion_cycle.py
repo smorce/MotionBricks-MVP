@@ -8,6 +8,7 @@
 - settled: 着地した同一フレームの姿勢を、次の移動要求まで保持する。
   公式 Idle へは入らない。IdleState.enter が待機クリップの開始姿勢へ生成し、
   足幅が変わるためである。
+- final_step: 既定では歩行履歴から公式生成した検証済みフレームを再生する。
 - 到着動作: settled のあと、ポーズ ID が届いてから一度だけ生成する。
 """
 from __future__ import annotations
@@ -17,6 +18,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from collect_stance import COLLECT_WAIT_S, needs_collect, stance
+from stop_prediction import landing_horizon
 from foot_plant import PlantState, stance_width_m
 from gait_log import GAIT_LOG
 import gait_plan
@@ -63,6 +65,7 @@ class Action:
     walk: bool = False
     play: bool = False
     begin_collect: bool = False
+    begin_final_stop: bool = False
     begin_arrival: bool = False
     begin_stop_recovery: bool = False
     pose: np.ndarray | None = None
@@ -117,6 +120,14 @@ class LocomotionCycle:
         self.walk_primed = False
         self.plants = PlantState()
         self._prev_points: dict | None = None
+        self._flight = {"left": 0.0, "right": 0.0}
+        self._landing_times = {}
+        self._step_period = CONTACT_WAIT_S
+        self.stop_prediction_m = 0.0
+        self.stop_roots = {}
+        self.final_stop_frames = []
+        self.final_stop_index = 0
+        self.final_stop_metrics = {}
         self._ground_z = 0.0
         self._event = ""
         self._dt = 1.0 / 60.0
@@ -161,6 +172,12 @@ class LocomotionCycle:
         self.walk_primed = False
         self.plants = PlantState()
         self._prev_points = None
+        self._landing_times = {}
+        self._step_period = CONTACT_WAIT_S
+        self.stop_roots = {}
+        self.final_stop_frames = []
+        self.final_stop_index = 0
+        self.final_stop_metrics = {}
         self.phase = MOVING
         self._event = "move"
 
@@ -169,6 +186,16 @@ class LocomotionCycle:
             return False
         self.upper_idle_ready = True
         return True
+
+    def note_final_stop(self, frames, metrics):
+        self.final_stop_metrics = metrics
+        if frames is None or not metrics.get('accepted'):
+            self.phase = STOP_FAILED
+            self.stop_failure_reason = metrics.get('reason', 'Final stop generation failed')
+            return
+        self.final_stop_frames = frames
+        self.final_stop_index = 0
+        self.phase = FINAL_STEP
 
     def stage_collect(self, frames, metrics, move_id, settle_seq):
         if self.phase != COLLECT_PREPARING or move_id != self.move_id or settle_seq != self.settle_seq:
@@ -294,6 +321,16 @@ class LocomotionCycle:
                 self._settle(frame, "collect_complete")
             return self._action(frame, pose_out=frame, seed=True, obs=obs)
 
+        if self.phase == FINAL_STEP and self.final_stop_frames:
+            frame = self.final_stop_frames[self.final_stop_index]
+            self.final_stop_index += 1
+            if self.final_stop_index == len(self.final_stop_frames):
+                self._settle(frame, 'final_stop_complete')
+            return self._action(frame, pose_out=frame, seed=self.phase == SETTLED, obs=obs)
+
+        if self.phase == FINAL_STEP and not gait_plan.USE_PROCEDURAL_STEP:
+            return self._action(pose, pose_out=pose, obs=obs)
+
         if self.phase == COLLECT_PREPARING:
             return self._action(self.settled_pose, pose_out=self.settled_pose, obs=obs)
 
@@ -311,7 +348,8 @@ class LocomotionCycle:
         if not gait_plan.USE_PROCEDURAL_STEP:
             self.step = None
 
-        stop_at = self.choice.final_window_m if gait_plan.USE_PROCEDURAL_STEP else MICRO_M
+        self.stop_prediction_m = max(self._flight.values()) * max(0.0, float(obs.get("actual_speed") or 0.0))
+        stop_at = self.choice.final_window_m if gait_plan.USE_PROCEDURAL_STEP else max(MICRO_M, self.stop_prediction_m)
         if self.stop_requested_s is None and self.mode == "walk" and distance > stop_at:
             self.phase = DECELERATING if distance <= DECEL_ZONE_M else MOVING
             prime = not self.walk_primed
@@ -321,10 +359,16 @@ class LocomotionCycle:
         # 通常歩行の最後、または短距離の踏み出し。ここから公式 Idle には入らない。
         if self.stop_requested_s is None:
             self.stop_requested_s = self.clock
+            self.stop_roots['walk_end'] = pose[0, :2].copy()
             self.stop_facing = facing.copy()
             self._event = "stop_requested"
 
         if not gait_plan.USE_PROCEDURAL_STEP:
+            if self.mode != 'micro':
+                self.phase = FINAL_STEP
+                action = self._action(pose, pose_out=pose, obs=obs)
+                action.begin_final_stop = True
+                return action
             return self._wait_to_settle(pose, parents, names, obs)
 
         if self.mode == "walk":
@@ -371,6 +415,7 @@ class LocomotionCycle:
         if timed_out:
             self._event = "contact_timeout"
             self.phase = CONTACT_RECOVERY
+            self.stop_roots['recovery_start'] = pose[0, :2].copy()
             self.contact_fallback = True
             action = self._action(pose, pose_out=pose, obs=obs)
             action.begin_stop_recovery = True
@@ -412,6 +457,7 @@ class LocomotionCycle:
                 if self.plants.left and self.plants.right and needs_collect(sagittal, width):
                     self.collect_attempted = True
                     self.collect_original_pose = shown.copy()
+                    self.stop_roots['collect_start'] = shown[0, :2].copy()
                     self.phase = COLLECT_PREPARING
                     self.collect_started_s = self.clock
                     action = self._action(shown, pose_out=shown, seed=seed, obs=obs)
@@ -437,6 +483,7 @@ class LocomotionCycle:
         if self.phase == SETTLED and self.settled_pose is not None:
             return
         self.settled_pose = np.array(pose, dtype=np.float64, copy=True)
+        self.stop_roots['collect_end' if reason == 'collect_complete' else 'settled'] = pose[0, :2].copy()
         self.settle_seq += 1
         self.settled_s = self.clock
         self.last_plant_s = self.last_plant_s or self.clock
@@ -494,6 +541,18 @@ class LocomotionCycle:
             points["right"]["ankle"][2], points["right"]["toe"][2],
         ])
         speeds = np.zeros(4)
+        for side in ('left', 'right'):
+            height = min(points[side][part][2] for part in ('ankle', 'toe')) - self._ground_z
+            previous = self._prev_points
+            vz = 0.0 if previous is None else (points[side]['ankle'][2] - previous[side]['ankle'][2]) / dt
+            self._flight[side] = landing_horizon(height, vz, self._step_period)
+            if previous is not None:
+                old_height = min(previous[side][part][2] for part in ('ankle', 'toe')) - self._ground_z
+                if height <= .015 < old_height:
+                    last = self._landing_times.get(side)
+                    if last is not None:
+                        self._step_period = float(np.clip((self.clock - last) / 2, .1, CONTACT_WAIT_S))
+                    self._landing_times[side] = self.clock
         if self._prev_points is not None and dt > 0:
             order = (
                 ("left", "ankle"), ("left", "toe"), ("right", "ankle"), ("right", "toe"),
@@ -521,6 +580,12 @@ class LocomotionCycle:
         width = stance_width_m(points["left"]["ankle"], points["right"]["ankle"], facing_vec)
         commanded = OFFICIAL_WALK_SPEED_MPS if walk else 0.0
         row = {
+            "stop_prediction_m": self.stop_prediction_m,
+            "final_stop_metrics": self.final_stop_metrics,
+            "root_x": float(pose[0, 0]),
+            "root_y": float(pose[0, 1]),
+            "goal_error_m": float(np.linalg.norm(pose[0, :2] - self.goal[:2])) if self.goal is not None else 0.0,
+            "stop_root_positions": {k: v.tolist() for k, v in self.stop_roots.items()},
             "t": round(self.clock, 4),
             "phase": self.phase,
             "mode": self.travel_mode or self.mode or "",
@@ -558,6 +623,11 @@ class LocomotionCycle:
         if self.log is not None:
             self.log.add(row)
         gait = {
+            "event": self._event,
+            "final_stop_metrics": self.final_stop_metrics,
+            "stop_prediction_m": row['stop_prediction_m'],
+            "goal_error_m": row['goal_error_m'],
+            "stop_root_positions": row['stop_root_positions'],
             "mode": self.travel_mode or self.mode or "",
             "phase": self.phase,
             "contacts_available": row["contacts_available"],

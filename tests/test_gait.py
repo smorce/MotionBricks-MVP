@@ -286,23 +286,19 @@ class CycleTests(unittest.TestCase):
 
     def test_procedural_off_uses_official_walk_without_step_cycle(self):
         cycle, actions, poses, log = self._run(4.0, procedural=False)
-        self.assertEqual(cycle.phase, SETTLED)
+        self.assertEqual(cycle.phase, 'final_step')
         self.assertTrue(any(item.walk for item in actions))
         self.assertIsNone(cycle.step)
-        self.assertFalse(any(row["phase"] == "final_step" for row in log.snapshot()))
+        self.assertEqual(sum(item.begin_final_stop for item in actions), 1)
         self.assertLess(abs(poses[-1][0, 0] - 4.0), 0.12)
-        self.assertTrue(
-            any(row["event"] in ("plant", "contact_timeout") for row in log.snapshot())
-        )
+        self.assertIsNone(cycle.settled_pose)
 
     def test_procedural_off_short_goal_never_builds_a_step(self):
         cycle, actions, poses, _log = self._run(0.30, procedural=False)
-        self.assertEqual(cycle.phase, SETTLED)
+        self.assertEqual(cycle.phase, 'final_step')
         self.assertIsNone(cycle.step)
-        self.assertTrue(any(item.walk for item in actions))
-        self.assertFalse(any(
-            item.pose is not None and item.phase == "final_step" for item in actions
-        ))
+        self.assertTrue(any(item.begin_final_stop for item in actions))
+        self.assertIsNone(cycle.settled_pose)
         self.assertLess(abs(poses[-1][0, 0] - 0.30), 0.12)
 
     def test_settled_pose_survives_a_speed_spike_and_a_late_frame(self):
