@@ -604,8 +604,7 @@ function connect(){
       if(msg.phase){
         const nextOfficial=String(msg.official_state||'');
         if(!USE_VRMA_IDLE && msg.phase==='idle' && sawLocomotion && vrm){
-          // Idleの最初の姿勢を書き込む前に、直前の表示姿勢を保持する。
-          holdStoppedPose(0);
+          // Capture only in the render loop after the official idle/speed guard passes.
           arrivedFromWalk=true;
           moveRequested=false;
           sawLocomotion=false;
