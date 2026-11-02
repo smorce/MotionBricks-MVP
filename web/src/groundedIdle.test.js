@@ -90,3 +90,18 @@ test('upper body eases toward idle without moving feet or exceeding blend max',(
   assert.ok(vrm.nodes.leftFoot.quaternion.angleTo(snapFoot)<1e-8);
   assert.ok(vrm.nodes.hips.quaternion.angleTo(snapHip)<1e-8);
 });
+
+test('収束補間は腰とルートを変更せず表示中の上半身から始まる',()=>{
+  const vrm=avatar();
+  const idle=new GroundedIdle(vrm);
+  idle.update(.1);
+  idle.captureUpper();
+  const displayed=vrm.nodes.spine.quaternion.clone();
+  vrm.nodes.spine.rotation.x=1;
+  vrm.scene.position.x=5;
+  vrm.nodes.hips.position.y=2;
+  idle.blendUpperToLive(0);
+  assert.ok(vrm.nodes.spine.quaternion.angleTo(displayed)<1e-6);
+  assert.equal(vrm.scene.position.x,5);
+  assert.equal(vrm.nodes.hips.position.y,2);
+});

@@ -1,3 +1,4 @@
+import {preflightCollect} from './collectValidation.js';
 import * as THREE from 'three';
 import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
@@ -10,6 +11,7 @@ import {emptyOwner, reduceOwner, shouldApplyStance} from './poseOwner.js';
 import {isSceneBootReady, spawnOffset} from './bootGate.js';
 import {GaitDebug} from './gaitDebug.js';
 import {formatGaitStatus} from './gaitView.js';
+import {compareFootHeights} from './footHeightDiagnostics.js';
 import idleMotionUrl from '../../motions/idle.vrma?url';
 import idleBreakMotionUrl from '../../motions/idle_06.vrma?url';
 import {buildKit} from '../../ModernRestaurantCafekit/kit.mjs';
@@ -315,6 +317,9 @@ function releaseVrmaIdle(){
   exitBlend=null;
 }
 let groundedIdle=null;
+let idleReadySent=null;
+let collectBlendStarted=null;
+let collectFinalUpper=null;
 let idleExit=null;
 const followTarget=new THREE.Vector3();
 const lastFollow=new THREE.Vector3();
@@ -345,6 +350,10 @@ function captureSettledIdle(){
   if(!vrm||!currentPose) return;
   applyPose(currentPose);
   adjustStance();
+  if(collectFinalUpper){
+    for(const bone of collectFinalUpper) bone.node.quaternion.copy(bone.q);
+    collectFinalUpper=null;
+  }
   groundedIdle=new GroundedIdle(vrm, {
     idleClip,
     fadeSeconds:IDLE_FADE_SEC,
@@ -380,6 +389,47 @@ function restoreCharacterPose(held){
     item.node.quaternion.copy(item.quaternion);
     item.node.position.copy(item.position);
   }
+}
+function sampleVrmCollect(){
+  vrm.humanoid.update();
+  vrm.scene.updateMatrixWorld(true);
+  const point=name=>{
+    const node=vrm.humanoid.getRawBoneNode(name);
+    if(!node) throw new Error(`VRM validation bone missing: ${name}`);
+    return node.getWorldPosition(new THREE.Vector3()).toArray();
+  };
+  const sample={root:vrm.scene.getWorldPosition(new THREE.Vector3()).toArray()};
+  for(const side of ['left','right']){
+    sample[side]={hip:point(`${side}UpperLeg`),knee:point(`${side}LowerLeg`),foot:point(`${side}Foot`),toe:point(`${side}Toes`)};
+  }
+  return sample;
+}
+function reviewCollect(msg){
+  if(msg.move_id!==owner.moveId||msg.settle_seq!==owner.settleSeq||owner.mode!=='collect_preparing') return;
+  let metrics={accepted:false,reason:'VRM is not ready'};
+  if(vrm&&sceneReady&&rig&&groundedIdle){
+    const previousStance=stanceApplied;
+    try{
+      metrics=preflightCollect(msg.frames,{
+        capture:()=>{
+          const held=captureCharacterPose();
+          const seen=new Set(held.map(item=>item.node));
+          vrm.humanoid.normalizedHumanBonesRoot.traverse(node=>{
+            if(!seen.has(node)) held.push({node,quaternion:node.quaternion.clone(),position:node.position.clone()});
+          });
+          return held;
+        },
+        restore:held=>{restoreCharacterPose(held);vrm.scene.updateMatrixWorld(true);},
+        apply:frame=>{applyPose(frame);adjustStance();},
+        sample:sampleVrmCollect,
+      },msg.metrics?.swing);
+    }catch(error){
+      metrics={accepted:false,reason:`VRM validation failed: ${error.message}`};
+    }finally{
+      stanceApplied=previousStance;
+    }
+  }
+  socket.send(JSON.stringify({type:'collect_review',move_id:msg.move_id,settle_seq:msg.settle_seq,accepted:metrics.accepted,metrics}));
 }
 function undoStance(){
   if(!vrm||!stanceApplied) return;
@@ -655,18 +705,37 @@ function connect(){
       initializeRetarget();
       tryRevealCharacter();
     }
+    if(msg.type==='collect_candidate') reviewCollect(msg);
     if(msg.type==='frame'){
+      if(owner.seenMove!=null && msg.gait?.move_id!=null && msg.gait.move_id<owner.seenMove) return;
+      if(msg.gait?.move_id===owner.moveId && msg.gait?.settle_seq<owner.settleSeq) return;
       if(msg.phase){
         motionPhase=msg.phase;
         officialState=String(msg.official_state||'');
         actualSpeed=Number(msg.actual_speed_mps);
       }
-      if(msg.gait) gait=msg.gait;
+      if(msg.gait) {
+        gait=msg.gait;
+        if(gait.collect_failure_reason) lastStage='収束失敗・停止姿勢維持';
+        else if(msg.phase==='collect_preparing') lastStage='収束モーション生成中';
+        else if(msg.phase==='collecting') lastStage='収束モーション再生中';
+        else if(msg.phase==='settled') lastStage=gait.collect_attempted?'収束完了':gait.collect_checked?'収束不要':'上半身Idle移行中・足幅判定待ち';
+        if(gait.collect_metrics?.before) lastStage+=` / 足幅 前 ${gait.collect_metrics.before.map(v=>v.toFixed(3)).join('/')}m → 後 ${gait.collect_metrics.after.map(v=>v.toFixed(3)).join('/')}m`;
+      }
       const reduced=reduceOwner(owner, {
+        bothPlanted: gait.feet?.left?.planted === true && gait.feet?.right?.planted === true,
         phase: msg.phase || motionPhase,
         moveId: msg.gait?.move_id ?? owner.moveId,
         settleSeq: msg.gait?.settle_seq ?? owner.settleSeq,
       });
+      if(reduced===owner) return;
+      if(reduced.capture && owner.mode==='collecting' && groundedIdle){
+        collectFinalUpper=groundedIdle.upper.map(bone=>({node:bone.node,q:bone.node.quaternion.clone()}));
+      }
+      if(reduced.mode==='collecting' && owner.mode!=='collecting'){
+        groundedIdle?.captureUpper();
+        collectBlendStarted=performance.now();
+      }
       lastPose=currentPose; currentPose=msg.poses; poseStamp=performance.now();
       if(reduced.capture) lastPose=currentPose;
       owner=reduced;
@@ -691,10 +760,17 @@ function connect(){
       motionPhase=msg.phase||motionPhase;
       officialState=String(msg.official_state||'');
       actualSpeed=Number(msg.actual_speed_mps);
-      if(msg.gait) gait=msg.gait;
+      if(msg.gait) {
+        gait=msg.gait;
+        if(gait.collect_failure_reason) lastStage='収束失敗・停止姿勢維持';
+        else if(msg.phase==='collect_preparing') lastStage='収束モーション生成中';
+        else if(msg.phase==='collecting') lastStage='収束モーション再生中';
+        else if(msg.phase==='settled') lastStage=gait.collect_attempted?'収束完了':gait.collect_checked?'収束不要':'上半身Idle移行中・足幅判定待ち';
+        if(gait.collect_metrics?.before) lastStage+=` / 足幅 前 ${gait.collect_metrics.before.map(v=>v.toFixed(3)).join('/')}m → 後 ${gait.collect_metrics.after.map(v=>v.toFixed(3)).join('/')}m`;
+      }
       const phase={
         idle:'待機', moving:'移動', decelerating:'減速', final_step:'最後の一歩',
-        waiting_for_foot_contact:'着地待ち', settled:'停止姿勢',
+        waiting_for_foot_contact:'着地待ち', contact_recovery:'接地回復中', stop_failed:'停止失敗（歩行停止済み）', settled:'停止姿勢',
         pose_pending:'ポーズ準備', pose_transition:'ポーズ移行', pose_done:'ポーズ完了',
       }[msg.phase]||msg.phase;
       currentMotionState=`動作: ${phase} / 公式: ${msg.official_state} / 速度 ${Number(msg.actual_speed_mps).toFixed(2)}m/s`;
@@ -787,8 +863,17 @@ function animate(){
       tryRevealCharacter();
     }else if(owner.capture && currentPose){
       captureSettledIdle();
-    }else if(owner.mode==='settled' && groundedIdle){
+    }else if(['settled','collect_preparing'].includes(owner.mode) && groundedIdle){
       groundedIdle.update(delta);
+      const readyId=`${owner.moveId}:${owner.settleSeq}`;
+      if(owner.mode==='settled' && groundedIdle.ready && idleReadySent!==readyId && socket?.readyState===WebSocket.OPEN){
+        socket.send(JSON.stringify({type:'upper_idle_ready',move_id:owner.moveId,settle_seq:owner.settleSeq}));
+        idleReadySent=readyId;
+      }
+    }else if(owner.mode==='collecting'){
+      if(pose) applyPose(pose);
+      adjustStance();
+      groundedIdle?.blendUpperToLive((performance.now()-collectBlendStarted)/300);
     }else{
       if(owner.blend && groundedIdle){
         idleExit={pose:groundedIdle, startedAt:performance.now()};
@@ -825,6 +910,17 @@ function animate(){
     }
     if(sceneReady) gaitDebug.update(gait, rig, spawn, FLOOR_TOP);
     vrm.update(delta);
+    if(sceneReady && gait?.feet && rig?.rest?.[0]){
+      vrm.scene.updateMatrixWorld(true);
+      const sample={};
+      for(const side of ['left','right']){
+        const foot=vrm.humanoid.getRawBoneNode(`${side}Foot`);
+        const toe=vrm.humanoid.getRawBoneNode(`${side}Toes`);
+        if(foot && toe) sample[side]={foot:foot.getWorldPosition(new THREE.Vector3()).toArray(),toe:toe.getWorldPosition(new THREE.Vector3()).toArray()};
+      }
+      gait.foot_height_diagnostics=sample.left && sample.right && rig.stop_ground
+        ? compareFootHeights(gait.feet, sample, rig.stop_ground.floor_z, FLOOR_TOP) : null;
+    }
   }
   if(place) place.tick(clock.elapsedTime);
   if(vrm && look && sceneReady) look.follow(vrm.scene);

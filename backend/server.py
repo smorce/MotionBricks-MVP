@@ -150,6 +150,10 @@ async def ws_endpoint(ws: WebSocket):
     try:
         while True:
             msg = await ws.receive_json()
+            if msg.get('type') == 'collect_review':
+                commands.put({name: msg.get(name) for name in ('type', 'move_id', 'settle_seq', 'accepted', 'metrics')})
+            if msg.get('type') == 'upper_idle_ready':
+                commands.put({name: msg.get(name) for name in ('type', 'move_id', 'settle_seq')})
             if msg.get('type') == 'move':
                 # 移動はすぐ開始する。遅れて届いた d3-mini の結果は move_id が違うので捨てる。
                 move_id = next(move_ids)

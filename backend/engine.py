@@ -1,7 +1,7 @@
 """公式 Scene Preview の SOMA キャラクターで、クリック先まで歩いて止まる。
 
 線形移動は Walk ブレンド（入力の長さ 1）だけで使う。短い距離と最後の一歩は
-LocomotionCycle の踏み出しが姿勢を所有し、着地後は公式 Idle へ入れない。
+公式の目標姿勢生成を事前検証して再生し、着地後は公式 Idle へ入れない。
 IdleState.enter は待機クリップの開始姿勢へ生成するため、足幅が変わる。
 
 推論はこのプロセスの NVlabs/motionbricks 環境で行う。ルート座標は目標へ吸着しない。
@@ -13,6 +13,8 @@ import os
 import sys
 import time
 from dataclasses import replace
+from concurrent.futures import ThreadPoolExecutor
+from threading import Event
 from pathlib import Path
 from queue import Empty, Queue
 
@@ -21,6 +23,11 @@ import numpy as np
 from locomotion_cycle import IDLE, LocomotionCycle, POSE_DONE, SETTLED
 from quats import RX90, quat_mul, quat_to_mat
 from soma_pose import overlay_pose
+from collect_stance import build_collect_target, build_collect_lift, build_weight_target, valid_weight_shift, validate_motion
+from step_cycle import choose_swing, foot_points
+from final_stop import build_stop_target, validate_stop_motion, stop_support, validate_stop_progress, calibrate_stop_ground
+from final_stop import support_target_metrics, support_motion_metrics, check_bone_lengths, contact_points
+import logging
 from stop_phase import NavState, apply_nav_command
 
 UPDATE_HZ = 60.0
@@ -49,7 +56,7 @@ def _load_runtime():
     from motionbricks.model.contract import MODEL_POSES_PER_TOKEN, ModelRig
     from motionbricks.model.soma.contract import SOMA_N1_FP32_ONNX_PATH
     from motionbricks.model.soma.engine import MotionBricksSOMAEngine
-    from motionbricks.runtime.target_pose import TargetPoseInferenceParams, place_target_poses
+    from motionbricks.runtime.target_pose import IKPin, TargetPoseInferenceParams, place_target_poses
     from app.runtime.common.io.smart_primitive_document import SmartPrimitiveAssetPool
     from app.runtime.common.motion import LocomotionCommand, PlaybackSource
     from app.runtime.common.rig import load_rig_assets
@@ -62,6 +69,7 @@ def _load_runtime():
 
     return {
         "wp": wp,
+        "IKPin": IKPin,
         "MODEL_POSES_PER_TOKEN": MODEL_POSES_PER_TOKEN,
         "ModelRig": ModelRig,
         "SOMA_N1_FP32_ONNX_PATH": SOMA_N1_FP32_ONNX_PATH,
@@ -164,13 +172,177 @@ def _enter_arrival(character, planted, pose_id: str, rt, wp, facing: np.ndarray)
     return _request_custom_pose(character, pose_id, rt)
 
 
-def _drain(commands: Queue, nav: NavState):
+def _begin_collect(character, planted, swing, rt, wp, facing, cancelled=None):
+    """独立キャラクターで全フレームを検証し、ライブ再生器には触れない。"""
+    names = list(character.skeleton.joint_names)
+    parents = [character.skeleton.joint_parent(i) for i in range(len(names))]
+    target_pose = build_collect_target(planted, names, swing, parents)
+    if target_pose is None:
+        other = 'right' if swing == 'left' else 'left'
+        target_pose = build_collect_target(planted, names, other, parents)
+        swing = other
+    if target_pose is None:
+        return None, dict(accepted=False, reason="No safe F001 collect target")
+    scratch = rt["SOMACharacter"](
+        character.engine, asset_pool=character.asset_pool,
+        modes=rt["DEFAULT_LOCOMOTION_MODES"],
+        idle_paths=(rt["DEFAULT_IDLE_CLIPS"][0],),
+        crouch_idle_paths=rt["DEFAULT_CROUCH_IDLE_CLIPS"],
+    )
+    _sync_pose(scratch, planted, wp, seed=True)
+    source = wp.array(np.repeat(target_pose[None].astype(np.float32), rt["MODEL_POSES_PER_TOKEN"], axis=0),
+                      dtype=wp.transform, device=character.engine.device)
+    target = wp.empty_like(source)
+    # 目標は既にワールド配置済みなので恒等配置を使い、二重変換を防ぐ。
+    rt["place_target_poses"](wp.vec3(0, 0, 0), wp.vec3(1, 0, 0), source, target, stream=character.engine.stream)
+    placed = target.numpy().reshape((-1, len(names), 7))[0]
+    support = 'right' if swing == 'left' else 'left'
+    a = foot_points(planted, parents, names)[support]
+    b = foot_points(placed, parents, names)[support]
+    if any(not np.allclose(a[part], b[part], atol=1e-5) for part in ('ankle', 'toe')):
+        return None, dict(accepted=False, reason="Target placement changed support foot")
+    mask = rt["IKPin"].RIGHT_FOOT if swing == 'left' else rt["IKPin"].LEFT_FOOT
+    if cancelled is not None and cancelled.is_set():
+        return None, dict(accepted=False, reason="Collect cancelled")
+    params = rt["TargetPoseInferenceParams"](transition_early_by_frames=0, num_poses_to_use=1, ik_pin_mask=mask)
+
+    def generate_segment(goal):
+        scratch.generate_to_target_poses(goal, params)
+        segment = []
+        for _ in range(int(4 / DT)):
+            if cancelled is not None and cancelled.is_set():
+                raise RuntimeError("Collect cancelled")
+            scratch._sample_playback(DT)
+            segment.append(scratch.current_pose.numpy().reshape((-1, 7)).copy())
+            scratch.player.record_pose(DT, scratch.current_pose)
+            if scratch.time_to_transition() <= 0:
+                return segment
+        raise RuntimeError("Collect playback timed out")
+
+    weight = build_weight_target(planted, parents, names, swing)
+    # 公式補正器で開始時の両足を保つ目標を作る。独自の脚IKは使わない。
+    both = rt["IKPin"].LEFT_FOOT | rt["IKPin"].RIGHT_FOOT
+    pin_pose = wp.array(planted.astype(np.float32), dtype=wp.transform, device=character.engine.device)
+    weight_pose = wp.array(weight.astype(np.float32), dtype=wp.transform, device=character.engine.device)
+    corrector = scratch._target_pose_ik_corrector
+    corrector.capture_pins(pin_pose, both, stream=character.engine.stream)
+    corrector.apply(weight_pose, 1.0, stream=character.engine.stream)
+    weight = weight_pose.numpy().reshape((-1, 7))
+    weight_target = wp.array(np.repeat(weight[None].astype(np.float32), rt["MODEL_POSES_PER_TOKEN"], axis=0), dtype=wp.transform, device=character.engine.device)
+    params = rt["TargetPoseInferenceParams"](transition_early_by_frames=0, num_poses_to_use=1,
+        ik_pin_mask=rt["IKPin"].LEFT_FOOT | rt["IKPin"].RIGHT_FOOT)
+    weight_frames = generate_segment(weight_target)
+    if not valid_weight_shift(weight_frames, planted, parents, names, swing):
+        return None, dict(accepted=False, reason="Weight shift did not preserve both contacts")
+    params = rt["TargetPoseInferenceParams"](transition_early_by_frames=0, num_poses_to_use=1, ik_pin_mask=mask)
+    a = foot_points(planted, parents, names)[swing]['ankle']
+    b = foot_points(target_pose, parents, names)[swing]['ankle']
+    intermediate = build_collect_lift(weight_frames[-1], parents, names, swing, float(np.linalg.norm(b[:2] - a[:2])))
+    if intermediate is None:
+        return None, dict(accepted=False, reason="No safe lift target")
+    lift_target = wp.array(np.repeat(intermediate[None].astype(np.float32), rt["MODEL_POSES_PER_TOKEN"], axis=0), dtype=wp.transform, device=character.engine.device)
+    frames = [planted.copy(), *weight_frames, *generate_segment(lift_target), *generate_segment(target)]
+    metrics = validate_motion(frames, planted, parents, names, swing)
+    metrics["stages"] = 3
+    metrics["swing"] = swing
+    return (frames if metrics['accepted'] else None), metrics
+
+
+def _begin_final_stop(character, pose, goal, rt, wp, destination=None, *, ground):
+    """歩行履歴から公式生成し、表示する前に停止区間全体を検証する。"""
+    names = list(character.skeleton.joint_names)
+    parents = [character.skeleton.joint_parent(i) for i in range(len(names))]
+    target_pose = build_stop_target(pose, goal, parents, names, ground)
+    if target_pose is None:
+        return None, dict(accepted=False, stage='target', reason='No safe final stop target')
+    support = stop_support(pose, goal, parents, names)
+    mask = rt['IKPin'].LEFT_FOOT if support == 'left' else rt['IKPin'].RIGHT_FOOT
+    diagnostics = support_target_metrics(pose, target_pose, support, parents, names)
+    diagnostics['f001_support_target'] = diagnostics.copy()
+    diagnostics['ik_pin_mask'] = int(mask)
+    logging.getLogger(__name__).info('Stop target support diagnostics: %s', diagnostics)
+    # 公式補正器で支持足を開始位置に固定する。独自の脚制御は使わない。
+    pin_pose = wp.array(pose.astype(np.float32), dtype=wp.transform, device=character.engine.device)
+    corrected = wp.array(target_pose.astype(np.float32), dtype=wp.transform, device=character.engine.device)
+    corrector = character._target_pose_ik_corrector
+    corrector.capture_pins(pin_pose, mask, stream=character.engine.stream)
+    try:
+        corrector.apply(corrected, 1.0, stream=character.engine.stream)
+        target_pose = corrected.numpy().reshape((-1, 7)).copy()
+    finally:
+        character.clear_ik_pins()
+    diagnostics.update(support_target_metrics(pose, target_pose, support, parents, names))
+    diagnostics.update(check_bone_lengths([target_pose], pose, names))
+    feet = contact_points(foot_points(target_pose, parents, names), ground)
+    if (diagnostics['support_target_error_m'] > .02
+            or diagnostics['support_target_toe_error_m'] > .02
+            or diagnostics['support_target_error_3d_m'] > .02
+            or diagnostics['support_target_direction_error_rad'] > .1
+            or not diagnostics['bone_lengths_valid']
+            or any(min(feet[s][p][2] for p in ('ankle', 'toe')) > ground['floor_z'] + .04
+                   for s in ('left', 'right'))
+            or any(feet[s][p][2] < ground['floor_z'] - .02
+                   for s in ('left', 'right') for p in ('ankle', 'toe'))):
+        return None, dict(diagnostics, accepted=False, stage='target', reason='No safe pinned stop target')
+    target = wp.array(np.repeat(target_pose[None].astype(np.float32), rt['MODEL_POSES_PER_TOKEN'], axis=0),
+                      dtype=wp.transform, device=character.engine.device)
+    frames = []
+    try:
+        # 履歴を初期化せず、直前までの速度と歩行位相を生成器へ渡す。
+        character.generate_to_target_poses(target, rt['TargetPoseInferenceParams'](
+            transition_early_by_frames=0, num_poses_to_use=1,
+            ik_pin_mask=mask))
+        for _ in range(int(4 / DT)):
+            character._sample_playback(DT)
+            frames.append(character.current_pose.numpy().reshape((-1, 7)).copy())
+            character.player.record_pose(DT, character.current_pose)
+            if character.time_to_transition() <= 0:
+                break
+        else:
+            return None, dict(diagnostics, accepted=False, stage='generation', reason='Final stop generation timed out')
+        metrics = validate_stop_motion(frames, pose, goal, parents, names, ground)
+        metrics = {**diagnostics, **metrics}
+        metrics.update(support_motion_metrics(frames, pose, support, parents, names, ground))
+        metrics.update(stage='validation', support=support, ik_pin_mask=int(mask))
+        if metrics['accepted']:
+            reason = validate_stop_progress(frames, pose, goal if destination is None else destination, support, parents, names)
+            if reason:
+                metrics.update(accepted=False, reason=reason)
+        metrics['travel_distance_m'] = float(np.linalg.norm(frames[-1][0, :2] - pose[0, :2])) if frames else 0.0
+        return (frames if metrics['accepted'] else None), metrics
+    finally:
+        _sync_pose(character, pose, wp, seed=True)
+        character.clear_ik_pins()
+
+
+
+def _collect_job(planted, swing, facing, cancelled):
+    """推論専用エンジンを使い、ライブ歩行とGPU状態を共有しない。"""
+    rt = _load_runtime()
+    wp = rt["wp"]
+    wp.init()
+    wp.set_device("cuda:0")
+    assets = rt["load_rig_assets"](rt["ModelRig"].SOMA)
+    pool = rt["SmartPrimitiveAssetPool"](assets.clip_registry, assets.reference_pose, assets.model_to_runtime)
+    engine = rt["MotionBricksSOMAEngine"](rt["SOMA_N1_FP32_ONNX_PATH"], model_to_runtime=assets.model_to_runtime)
+    with engine, wp.ScopedStream(engine.stream):
+        character = rt["SOMACharacter"](engine, asset_pool=pool, modes=rt["DEFAULT_LOCOMOTION_MODES"],
+            idle_paths=(rt["DEFAULT_IDLE_CLIPS"][0],), crouch_idle_paths=rt["DEFAULT_CROUCH_IDLE_CLIPS"])
+        return _begin_collect(character, planted, swing, rt, wp, facing, cancelled)
+
+
+def _drain(commands: Queue, nav: NavState, cycle=None):
     goal = None
     while True:
         try:
             cmd = commands.get_nowait()
         except Empty:
             return nav, goal
+        if cmd.get("type") == "upper_idle_ready" and cycle is not None:
+            cycle.note_upper_idle_ready(cmd.get("move_id"), cmd.get("settle_seq"))
+        if cmd.get("type") == "collect_review" and cycle is not None:
+            metrics = cmd.get("metrics")
+            cycle.note_collect_review(cmd.get("accepted") is True, metrics if isinstance(metrics, dict) else {}, cmd.get("move_id"), cmd.get("settle_seq"))
         result = apply_nav_command(nav, cmd)
         if result.quit:
             return None
@@ -220,17 +392,20 @@ def worker(commands: Queue, publish):
         rest[0, 3:] = quat_mul(RX90, rest[0, 3:])
         parents = [skeleton.joint_parent(i) for i in range(skeleton.num_joints)]
         names = list(skeleton.joint_names)
+        stop_ground = calibrate_stop_ground(rest, parents, names)
         publish(
             {
                 "type": "rig",
                 "joint_names": names,
                 "parents": parents,
                 "rest": rest.tolist(),
+                "stop_ground": stop_ground,
                 "stream_hz": UPDATE_HZ,
             }
         )
         nav = NavState()
         cycle = LocomotionCycle()
+        cycle.ground_calibration = stop_ground
         goal = None
         last_generate_ms = 0.0
         frames = 0
@@ -238,19 +413,44 @@ def worker(commands: Queue, publish):
         report_at = time.monotonic()
         next_tick = time.monotonic()
         last_root = None
+        collect_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="collect-gpu")
+        collect_job = None
+        collect_cancel = Event()
         while True:
-            drained = _drain(commands, nav)
+            drained = _drain(commands, nav, cycle)
             if drained is None:
+                collect_cancel.set()
+                collect_executor.shutdown(wait=False, cancel_futures=True)
                 return
             nav, moved = drained
             if moved is not None:
+                collect_cancel.set()
+                if collect_job is not None:
+                    collect_job[0].cancel()
+                    collect_job = None
                 goal = moved
                 cycle.begin_move(moved, nav.hold_stance, nav.move_id)
             if not nav.hold_stance and nav.target_pose_id != cycle.target_pose_id:
                 cycle.note_pose_choice(nav.target_pose_id)
+            if collect_job is not None and cycle.phase != "collect_preparing":
+                collect_cancel.set()
+                collect_job[0].cancel()
+                collect_job = None
+            if collect_job is not None and collect_job[0].done():
+                future, move_id, settle_seq = collect_job
+                collect_job = None
+                try:
+                    collect_frames, metrics = future.result()
+                except Exception as exc:
+                    collect_frames, metrics = None, dict(accepted=False, reason=f"Collect generation failed: {exc}")
+                if cycle.stage_collect(collect_frames, metrics, move_id, settle_seq):
+                    publish({"type": "collect_candidate", "move_id": move_id, "settle_seq": settle_seq,
+                             "frames": [frame.tolist() for frame in collect_frames], "metrics": metrics})
+                elif metrics.get("reason"):
+                    print(f"Collect rejected: {metrics['reason']}", flush=True)
             pose = character.current_pose.numpy().reshape((-1, 7)).copy()
             playback = character._playback_source.name
-            contacts_available = playback != "CLIP" and cycle.phase in (IDLE, "moving", "decelerating")
+            contacts_available = playback != "CLIP" and cycle.phase in (IDLE, "moving", "decelerating", "waiting_for_foot_contact", "contact_recovery")
             root_speed = 0.0
             if last_root is not None:
                 root_speed = float(np.linalg.norm(pose[0, :2] - last_root) / DT)
@@ -273,7 +473,31 @@ def worker(commands: Queue, publish):
                 action.facing if action.facing is not None else character.movement.current_facing,
                 np.array([1.0, 0.0, 0.0], dtype=np.float32),
             )
-            if action.begin_arrival:
+            if action.begin_final_stop:
+                try:
+                    stop_frames, stop_metrics = _begin_final_stop(character, action.pose, cycle.final_stop_goal, rt, wp, destination=cycle.goal, ground=stop_ground)
+                except Exception as exc:
+                    _sync_pose(character, pose, wp, seed=True)
+                    stop_frames, stop_metrics = None, dict(accepted=False, stage='generation', reason=f'Final stop generation failed: {exc}')
+                cycle.note_final_stop(stop_frames, stop_metrics)
+                character.movement.reset_desired_velocity()
+            elif action.begin_stop_recovery:
+                try:
+                    applied = _enter_arrival(character, action.pose, "F001", rt, wp, facing)
+                    cycle.note_stop_recovery(applied, character.time_to_transition() if applied else 0.0)
+                except Exception as exc:
+                    _sync_pose(character, action.pose, wp, seed=True)
+                    cycle.note_stop_recovery(False, 0.0)
+                    publish({"type": "error", "message": f"Stop recovery failed: {exc}"})
+                character.movement.reset_desired_velocity()
+            elif action.begin_collect:
+                planted = action.pose
+                feet = foot_points(planted, parents, names)
+                swing = choose_swing(feet['left']['ankle'], feet['right']['ankle'], facing,
+                                     feet['left']['ankle'][2], feet['right']['ankle'][2])
+                collect_cancel = Event()
+                collect_job = (collect_executor.submit(_collect_job, planted.copy(), swing, facing.copy(), collect_cancel), cycle.move_id, cycle.settle_seq)
+            elif action.begin_arrival:
                 planted = action.pose if action.pose is not None else pose
                 try:
                     applied = _enter_arrival(character, planted, cycle.target_pose_id, rt, wp, facing)
@@ -296,7 +520,7 @@ def worker(commands: Queue, publish):
             if step_ms >= _SLOW_STEP_MS:
                 last_generate_ms = step_ms
             shown = character.current_pose.numpy().reshape((-1, 7)).copy()
-            last_root = shown[0, :2].copy()
+            last_root = pose[0, :2].copy()
             distance = None if goal is None else float(np.linalg.norm(goal[:2] - shown[0, :2]))
             if _arrival_due(nav, cycle, goal is not None):
                 publish(
@@ -317,7 +541,7 @@ def worker(commands: Queue, publish):
                         "type": "stop_triggered",
                         "distance_m": distance,
                         "speed_mps": round(root_speed, 3),
-                        "threshold_m": None if cycle.choice is None else round(cycle.choice.final_window_m, 3),
+                        "threshold_m": round(max(.08, cycle.stop_prediction_m), 3),
                         "mode": cycle.mode,
                     }
                 )

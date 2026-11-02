@@ -40,6 +40,7 @@ class GaitLog:
             "left_x", "left_y", "left_z", "right_x", "right_y", "right_z",
             "left_slip_m", "right_slip_m", "stance_width_m",
             "stop_requested_s", "last_plant_s", "settled_s", "event",
+            "root_x", "root_y", "goal_error_m", "stop_prediction_m", "stop_root_positions",
         ]
         writer = csv.DictWriter(buffer, fieldnames=fields, extrasaction="ignore")
         writer.writeheader()
