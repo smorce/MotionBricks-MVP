@@ -1,6 +1,7 @@
 """独立した再生器を要求する、上限付き候補探索。"""
 
 import copy
+import time
 
 
 def search_candidates(
@@ -15,6 +16,7 @@ def search_candidates(
         if any(player is prior for prior in players):
             raise ValueError("Candidate players must be independent")
         players.append(player)
+        started = time.perf_counter()
         try:
             frames = generate(player, spec)
             metrics = diagnose(frames)
@@ -35,6 +37,7 @@ def search_candidates(
             row = dict(
                 specification=spec, metrics=dict(accepted=False, reason=str(exc))
             )
+        row['generation_and_validation_seconds'] = time.perf_counter() - started
         rows.append(row)
         if safe and stop_on_first:
             break

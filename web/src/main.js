@@ -138,6 +138,47 @@ renderer.setSize(window.innerWidth,window.innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 document.body.insertBefore(renderer.domElement, document.querySelector('#toolbar'));
 const controls = new OrbitControls(camera, renderer.domElement);
+// 自動検証時だけ、同一姿勢を三方向から描画して骨座標と対応づける。
+if (new URLSearchParams(location.search).has('observation')) {
+  window.motionBricksObservation = {
+    state() { return lastFrame; },
+    move(dx, dy) {
+      if (!vrm || !sceneReady || socket?.readyState !== WebSocket.OPEN || !lastFrame) {
+        throw new Error('Scene is not ready');
+      }
+      socket.send(JSON.stringify({type:'move', x:lastFrame.poses[0][0]+dx,
+        y:lastFrame.poses[0][1]+dy, hold_stance:true}));
+    },
+    capture() {
+      if (!vrm || !sceneReady || !lastFrame) throw new Error('Scene is not ready');
+      const position = camera.position.clone();
+      const rotation = camera.quaternion.clone();
+      const root = vrm.scene.position.clone();
+      const target = root.clone().add(new THREE.Vector3(0, 0.9, 0));
+      const joints = {};
+      for (const side of ['left', 'right']) {
+        joints[side] = {};
+        for (const part of ['UpperLeg', 'LowerLeg', 'Foot', 'Toes']) {
+          const node = vrm.humanoid.getRawBoneNode(side+part);
+          joints[side][part] = node?.getWorldPosition(new THREE.Vector3()).toArray() ?? null;
+        }
+      }
+      const images = {};
+      for (const [name, angle] of [['front',0], ['side',Math.PI/2], ['45deg',Math.PI/4]]) {
+        const offset = new THREE.Vector3(3.2*Math.sin(angle),1.2,3.2*Math.cos(angle));
+        offset.applyQuaternion(vrm.scene.quaternion);
+        camera.position.copy(root).add(offset);
+        camera.lookAt(target);
+        renderer.render(scene,camera);
+        images[name] = renderer.domElement.toDataURL('image/png');
+      }
+      camera.position.copy(position);
+      camera.quaternion.copy(rotation);
+      renderer.render(scene,camera);
+      return {capturedAt:performance.now(), frame:lastFrame, joints, images};
+    },
+  };
+}
 controls.enableDamping = true;
 controls.dampingFactor = 0.08;
 controls.enablePan = true;
@@ -182,6 +223,7 @@ let vrm=null;
 let rig=null;
 let currentPose=null;
 let lastPose=null;
+let lastFrame=null;
 let socket=null;
 let lastDecision='—';
 let lastStage='';
@@ -736,7 +778,7 @@ function connect(){
         groundedIdle?.captureUpper();
         collectBlendStarted=performance.now();
       }
-      lastPose=currentPose; currentPose=msg.poses; poseStamp=performance.now();
+      lastPose=currentPose; currentPose=msg.poses; lastFrame=msg; poseStamp=performance.now();
       if(reduced.capture) lastPose=currentPose;
       owner=reduced;
       if(clickAt){clickLatency=performance.now()-clickAt; clickAt=0}

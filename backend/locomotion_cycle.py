@@ -141,6 +141,8 @@ class LocomotionCycle:
         self.names = default_names()
 
     def begin_move(self, goal_xy, hold_stance: bool, move_id) -> None:
+        # 速度・方向・接地条件を照合できない過去の停止距離は再利用しない。
+        self.last_stop_distance_m = 0.0
         self.goal = np.array([float(goal_xy[0]), float(goal_xy[1]), 0.0], dtype=np.float64)
         self.hold_stance = bool(hold_stance)
         self.move_id = move_id

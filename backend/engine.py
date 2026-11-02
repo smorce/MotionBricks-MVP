@@ -564,7 +564,11 @@ def worker(commands: Queue, publish):
             )
             if action.begin_final_stop:
                 try:
-                    stop_frames, stop_metrics = _begin_final_stop(character, action.pose, cycle.final_stop_goal, rt, wp, destination=cycle.goal, ground=stop_ground, control=dict(phase=cycle.phase, speed_mps=root_speed, stop_prediction_m=cycle.stop_prediction_m, destination=None if cycle.goal is None else cycle.goal.tolist(), contacts=dict(left=cycle.plants.left, right=cycle.plants.right), retarget_settings=getattr(cycle,'retarget_settings',{})))
+                    stop_control = dict(move_id=cycle.move_id, settle_seq=cycle.settle_seq,
+                                        retry_count=cycle.stop_retry_count,
+                                        last_stop_distance_m=cycle.last_stop_distance_m,
+                                        facing=facing.tolist())
+                    stop_frames, stop_metrics = _begin_final_stop(character, action.pose, cycle.final_stop_goal, rt, wp, destination=cycle.goal, ground=stop_ground, control=dict(**stop_control, phase=cycle.phase, speed_mps=root_speed, stop_prediction_m=cycle.stop_prediction_m, destination=None if cycle.goal is None else cycle.goal.tolist(), contacts=dict(left=cycle.plants.left, right=cycle.plants.right), retarget_settings=getattr(cycle,'retarget_settings',{})))
                 except Exception as exc:
                     _sync_pose(character, pose, wp, seed=True)
                     stop_frames, stop_metrics = None, dict(accepted=False, stage='generation', reason=f'Final stop generation failed: {exc}')
