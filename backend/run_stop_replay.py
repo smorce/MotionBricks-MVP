@@ -43,7 +43,8 @@ def main():
         for path in paths:
             started = time.perf_counter()
             replay = load_replay(path)
-            specs = candidate_specs()
+            preferred=replay['metadata']['support']
+            specs = candidate_specs(preferred)
             result = search_candidates(
                 specs,
                 lambda spec: new_character(rt, engine, pool, replay),
@@ -52,7 +53,7 @@ def main():
             )
             frames = result.pop("frames")
             if frames is None:
-                refined=search_candidates(refinement_specs(),
+                refined=search_candidates(refinement_specs(preferred),
                     lambda spec:new_character(rt,engine,pool,replay),
                     lambda p,s:generate_candidate(p,replay,s,rt),lambda f:diagnose(replay,f),limit=12)
                 frames=refined.pop('frames')

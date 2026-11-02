@@ -241,7 +241,7 @@ def generate_candidate(character, replay, spec, rt):
 
 def diagnose(replay, frames):
     data = replay["metadata"]
-    return validate_stop_motion(
+    metrics = validate_stop_motion(
         frames,
         np.asarray(replay["pose"]),
         data["goal"],
@@ -249,3 +249,11 @@ def diagnose(replay, frames):
         data["names"],
         data["ground"],
     )
+    if metrics['accepted']:
+        from final_stop import validate_stop_progress
+        destination=data.get('control',{}).get('destination') or data['goal']
+        reason=validate_stop_progress(frames,np.asarray(replay['pose']),destination,
+                                      frames.support,data['parents'],data['names'])
+        if reason:
+            metrics.update(accepted=False,reason=reason)
+    return metrics

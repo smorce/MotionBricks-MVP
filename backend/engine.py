@@ -259,7 +259,6 @@ def _begin_final_stop(character, pose, goal, rt, wp, destination=None, *, ground
     replay = capture_replay(character, goal, ground, control=control)
     preferred = replay['metadata']['support']
     specs = candidate_specs(preferred)
-    specs = [specs[i] for i in (4, 6, 12, 14, 16, 18)]
     def diagnose_progress(frames):
         metrics = diagnose(replay, frames)
         if metrics['accepted']:
@@ -274,14 +273,14 @@ def _begin_final_stop(character, pose, goal, rt, wp, destination=None, *, ground
     result = search_candidates(specs,
         lambda spec: new_character(rt, character.engine, character.asset_pool, replay),
         lambda scratch, spec: generate_candidate(scratch, replay, spec, rt),
-        diagnose_progress, limit=6, stop_on_first=True)
+        diagnose_progress, limit=24, stop_on_first=True)
     frames = result.pop('frames')
     if frames is None:
         refined_specs = refinement_specs(preferred)
-        refined = search_candidates([refined_specs[8],refined_specs[10]],
+        refined = search_candidates(refined_specs,
             lambda spec:new_character(rt,character.engine,character.asset_pool,replay),
             lambda scratch,spec:generate_candidate(scratch,replay,spec,rt),
-            diagnose_progress,limit=2,stop_on_first=True)
+            diagnose_progress,limit=24,stop_on_first=True)
         frames=refined.pop('frames')
         if refined['selected'] is not None:
             result['selected']=len(result['candidates'])+refined['selected']
@@ -291,10 +290,12 @@ def _begin_final_stop(character, pose, goal, rt, wp, destination=None, *, ground
         import copy
         recovery = copy.deepcopy(replay)
         recovery['metadata']['goal'] = np.asarray(pose)[0, :2].tolist()
-        fallback = search_candidates([specs[0], specs[1]],
+        recovery['metadata']['f001'] = None
+        recovery['metadata'].setdefault('control', {})['destination'] = recovery['metadata']['goal']
+        fallback = search_candidates(specs,
             lambda spec: new_character(rt, character.engine, character.asset_pool, recovery),
             lambda scratch, spec: generate_candidate(scratch, recovery, spec, rt),
-            lambda values: diagnose(recovery, values), limit=2, stop_on_first=True)
+            lambda values: diagnose(recovery, values), limit=24, stop_on_first=True)
         frames = fallback.pop('frames')
         result['recovery'] = fallback
         recovery_only = frames is not None

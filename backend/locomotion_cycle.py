@@ -625,6 +625,7 @@ class LocomotionCycle:
         commanded = OFFICIAL_WALK_SPEED_MPS if walk else 0.0
         row = {
             "stop_prediction_m": self.stop_prediction_m,
+            "stop_retry_count": self.stop_retry_count,
             "final_stop_metrics": self.final_stop_metrics,
             "root_x": float(pose[0, 0]),
             "root_y": float(pose[0, 1]),
@@ -672,6 +673,7 @@ class LocomotionCycle:
             "event": self._event,
             "final_stop_metrics": self.final_stop_metrics,
             "stop_prediction_m": row['stop_prediction_m'],
+            "stop_retry_count": self.stop_retry_count,
             "goal_error_m": row['goal_error_m'],
             "stop_root_positions": row['stop_root_positions'],
             "mode": self.travel_mode or self.mode or "",

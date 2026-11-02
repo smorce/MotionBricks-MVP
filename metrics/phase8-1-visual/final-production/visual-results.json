@@ -1,0 +1,20 @@
+[
+  {
+    "case": "V01",
+    "phase": "settled",
+    "error_m": 0.0005603256479894466,
+    "NAVIGATION_PASS": true,
+    "POSE_PASS": null,
+    "IDLE_PASS": null,
+    "reason": ""
+  },
+  {
+    "case": "V02",
+    "phase": "stop_failed",
+    "error_m": 0.17072618661383507,
+    "NAVIGATION_PASS": false,
+    "POSE_PASS": null,
+    "IDLE_PASS": null,
+    "reason": "No safe stop candidate"
+  }
+]

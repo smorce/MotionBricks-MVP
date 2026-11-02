@@ -154,6 +154,11 @@ if (new URLSearchParams(location.search).has('observation')) {
       const position = camera.position.clone();
       const rotation = camera.quaternion.clone();
       const root = vrm.scene.position.clone();
+      vrm.scene.updateMatrixWorld(true);
+      const hips = vrm.humanoid.getNormalizedBoneNode('hips');
+      const facing = new THREE.Vector3(0,0,1).applyQuaternion(hips.getWorldQuaternion(new THREE.Quaternion()));
+      facing.y=0;
+      facing.normalize();
       const target = root.clone().add(new THREE.Vector3(0, 0.9, 0));
       const joints = {};
       for (const side of ['left', 'right']) {
@@ -166,7 +171,7 @@ if (new URLSearchParams(location.search).has('observation')) {
       const images = {};
       for (const [name, angle] of [['front',0], ['side',Math.PI/2], ['45deg',Math.PI/4]]) {
         const offset = new THREE.Vector3(3.2*Math.sin(angle),1.2,3.2*Math.cos(angle));
-        offset.applyQuaternion(vrm.scene.quaternion);
+        offset.applyAxisAngle(new THREE.Vector3(0,1,0),Math.atan2(facing.x,facing.z));
         camera.position.copy(root).add(offset);
         camera.lookAt(target);
         renderer.render(scene,camera);
@@ -175,7 +180,12 @@ if (new URLSearchParams(location.search).has('observation')) {
       camera.position.copy(position);
       camera.quaternion.copy(rotation);
       renderer.render(scene,camera);
-      return {capturedAt:performance.now(), frame:lastFrame, joints, images};
+      return {capturedAt:performance.now(), displayFrame:observationFrame, displayedPose:observationPose, frame:lastFrame, facing:facing.toArray(), floorY:FLOOR_TOP, joints, images};
+    },
+    environment(clear) {
+      place.group.visible=!clear;
+      clickFloor.material.opacity=clear?1:0;
+      clickFloor.material.color.setHex(0x777777);
     },
   };
 }
@@ -224,6 +234,8 @@ let rig=null;
 let currentPose=null;
 let lastPose=null;
 let lastFrame=null;
+let observationFrame=0;
+let observationPose=null;
 let socket=null;
 let lastDecision='—';
 let lastStage='';
@@ -738,7 +750,9 @@ function buildUsecaseList(){
 }
 buildUsecaseList();
 function connect(){
-  socket=new WebSocket('ws://127.0.0.1:8765/ws');
+  const observationPort=new URLSearchParams(location.search).has('observation')
+    ? new URLSearchParams(location.search).get('wsPort') : null;
+  socket=new WebSocket(`ws://127.0.0.1:${observationPort||8765}/ws`);
   socket.onopen=()=>{status.textContent='接続済み。VRMを読み込んでください。'};
   socket.onmessage=(e)=>{
     const msg=JSON.parse(e.data);
@@ -900,6 +914,7 @@ function animate(){
   const delta=Math.min(clock.getDelta(),.1);
   const blend=Math.min(1,(performance.now()-poseStamp)/(1000/60));
   const pose=currentPose?lerpPose(lastPose, currentPose, blend):null;
+  observationPose=pose;
   if(vrm){
     if(!sceneReady){
       tryRevealCharacter();
@@ -1013,5 +1028,6 @@ function animate(){
       `d3-mini: ${lastDecision}`,currentMotionState,lastStage,lastError].filter(Boolean).join('\n');
   }
   renderer.render(scene,camera);
+  observationFrame+=1;
 }
 animate();

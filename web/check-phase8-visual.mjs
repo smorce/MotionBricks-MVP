@@ -4,7 +4,7 @@ import {resolve} from 'node:path';
 
 const require=createRequire(process.env.MOTIONBRICKS_PLAYWRIGHT_PACKAGE);
 const {chromium}=require('./index.js');
-const output=resolve('metrics/phase8-visual');
+const output=resolve(process.env.PHASE81_OUTPUT??'metrics/phase8-1-visual');
 await mkdir(output,{recursive:true});
 const browser=await chromium.launch({executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});
 const context=await browser.newContext({viewport:{width:1440,height:1000},recordVideo:{dir:output}});
@@ -22,12 +22,12 @@ const capture=async label=>{
   return data;
 };
 try {
-  await page.routeWebSocket('ws://127.0.0.1:8765/ws',ws=>ws.connectToServer('ws://127.0.0.1:8776/ws'));
-  await page.goto('http://127.0.0.1:5188/?observation');
+  await page.goto('http://127.0.0.1:5188/?observation&wsPort=8776');
   await page.locator('#vrmFile').setInputFiles(resolve('ロゼ.vrm'));
   await page.waitForFunction(()=>document.body.innerText.includes('表示準備完了'));
   await page.waitForTimeout(1500);
-  const cases=[['V01',.3,0],['V02',.5,0],['V03',1,0],['V04',2,0],['V05',5,0],
+  await page.evaluate(clear=>window.motionBricksObservation.environment(clear),process.env.PHASE81_SCENE!=='production');
+  const cases=JSON.parse(process.env.PHASE81_CASES??'null')??[['V01',.3,0],['V02',.5,0],['V03',1,0],['V04',2,0],['V05',5,0],
     ['V06',0,1],['V07',.3,0],['V08',.3,0],['V09',.5,0],['V10',.3,0]];
   for(const [name,dx,dy] of cases) {
     if(name==='V10') {
