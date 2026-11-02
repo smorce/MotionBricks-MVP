@@ -259,11 +259,11 @@ def _begin_final_stop(character, pose, goal, rt, wp, destination=None, *, ground
     replay = capture_replay(character, goal, ground, control=control)
     preferred = replay['metadata']['support']
     specs = candidate_specs(preferred)
-    specs = [specs[i] for i in (4, 6, 16, 18)]
+    specs = [specs[i] for i in (4, 6, 12, 14, 16, 18)]
     result = search_candidates(specs,
         lambda spec: new_character(rt, character.engine, character.asset_pool, replay),
         lambda scratch, spec: generate_candidate(scratch, replay, spec, rt),
-        lambda frames: diagnose(replay, frames), limit=4, stop_on_first=True)
+        lambda frames: diagnose(replay, frames), limit=6, stop_on_first=True)
     frames = result.pop('frames')
     if frames is None:
         refined_specs = refinement_specs(preferred)
