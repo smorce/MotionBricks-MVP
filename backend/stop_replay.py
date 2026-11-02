@@ -125,7 +125,7 @@ def capture_replay(character, goal, ground, *, control=None):
     metadata["vrm_mapping_sha256"] = hashlib.sha256(mapping.read_bytes()).hexdigest()
     metadata["vrm_mapping_source"] = mapping.read_text(encoding="utf-8")
     metadata['vrm_transform_sources']={name:(mapping.parent/name).read_text(encoding='utf-8')
-                                      for name in ('coords.js','stance.js','idleHandoff.js','groundedIdle.js')}
+                                      for name in ('coords.js','stance.js','idleHandoff.js','groundedIdle.js','somaRetarget.js')}
     return dict(
         schema_version=1,
         pose=pose.tolist(),
