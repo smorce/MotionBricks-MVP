@@ -1,3 +1,4 @@
+import {MAP, calcWorldQuats, applySomaRotations} from './somaRetarget.js';
 import {preflightCollect} from './collectValidation.js';
 import * as THREE from 'three';
 import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
@@ -270,30 +271,6 @@ const openFloor=cafeUsecases.find((item)=>item.id==='open-floor') ?? {
   id:'open-floor', title:'空いた床', intent:'カフェの空いた床に着いた。自然に立つ。', hints:['自然に立つ'], marker:false,
 };
 
-// ロゼの VRM 1.0 人体ボーン。Spine2 / Neck1 / Jaw は対応する正規化ボーンが無い。
-const MAP = {
-  Hips:'hips', Spine1:'spine', Chest:'chest',
-  Neck2:'neck', Head:'head', LeftEye:'leftEye', RightEye:'rightEye',
-  LeftShoulder:'leftShoulder', LeftArm:'leftUpperArm', LeftForeArm:'leftLowerArm', LeftHand:'leftHand',
-  LeftHandThumbEnd:'leftThumbDistal', LeftHandMiddleEnd:'leftMiddleDistal',
-  RightShoulder:'rightShoulder', RightArm:'rightUpperArm', RightForeArm:'rightLowerArm', RightHand:'rightHand',
-  RightHandThumbEnd:'rightThumbDistal', RightHandMiddleEnd:'rightMiddleDistal',
-  LeftLeg:'leftUpperLeg', LeftShin:'leftLowerLeg', LeftFoot:'leftFoot', LeftToeBase:'leftToes',
-  RightLeg:'rightUpperLeg', RightShin:'rightLowerLeg', RightFoot:'rightFoot', RightToeBase:'rightToes',
-};
-// World basis conversion: NVIDIA demos Z-up => Three.js Y-up.
-const basis=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,0,0),-Math.PI/2);
-const basisInv=basis.clone().invert();
-const q=(arr)=>new THREE.Quaternion(arr[3],arr[4],arr[5],arr[6]);
-function toThreeWorldQuat(v){return basis.clone().multiply(v).multiply(basisInv)}
-function calcWorldQuats(pose,parents){
-  const out=[];
-  for(let i=0;i<pose.length;i++){
-    const local=q(pose[i]);
-    out.push(parents[i] < 0 ? local : out[parents[i]].clone().multiply(local));
-  }
-  return out;
-}
 let restSourceWorld=[];
 let restDestWorld=new Map();
 function initializeRetarget(){
@@ -331,20 +308,7 @@ function applyPose(pose){
   // Roze's scene origin follows the source hips ground position; don't add hips height twice.
   placeRoot(pose);
   vrm.scene.updateMatrixWorld(true);
-  const world=calcWorldQuats(pose,rig.parents);
-  const used=new Set();
-  for(let i=0;i<world.length;i++){
-    const bone=MAP[rig.joint_names[i]];
-    if(!bone||used.has(bone)||!restDestWorld.has(bone))continue;
-    used.add(bone);
-    const node=vrm.humanoid.getNormalizedBoneNode(bone);
-    if(!node)continue;
-    const delta=world[i].clone().multiply(restSourceWorld[i].clone().invert());
-    const desired=toThreeWorldQuat(delta).multiply(restDestWorld.get(bone));
-    const parentWorld=node.parent.getWorldQuaternion(new THREE.Quaternion());
-    node.quaternion.copy(parentWorld.invert().multiply(desired));
-    node.updateMatrixWorld(true);
-  }
+  applySomaRotations(vrm, rig, pose, restSourceWorld, restDestWorld);
 }
 function markInput(){
   lastInputAt=performance.now();
