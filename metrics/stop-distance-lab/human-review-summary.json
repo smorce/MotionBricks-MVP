@@ -1,0 +1,45 @@
+{
+  "selection_policy": "human_visual_priority",
+  "states": [
+    {
+      "state": "stop-distance-lab",
+      "reviewed": 36,
+      "natural_ids": [
+        "A-0.150",
+        "A-0.200",
+        "A-0.600",
+        "A-0.800",
+        "C-0.800",
+        "A-1.000"
+      ],
+      "bad_count": 30
+    },
+    {
+      "state": "left-swing",
+      "reviewed": 12,
+      "natural_ids": [
+        "A-0.300",
+        "A-0.500"
+      ],
+      "bad_count": 10
+    },
+    {
+      "state": "right-swing",
+      "reviewed": 12,
+      "natural_ids": [
+        "A-1.000"
+      ],
+      "bad_count": 11
+    },
+    {
+      "state": "after-turn",
+      "reviewed": 12,
+      "natural_ids": [
+        "A-0.300",
+        "A-0.500"
+      ],
+      "bad_count": 10
+    }
+  ],
+  "total_reviewed": 72
+}

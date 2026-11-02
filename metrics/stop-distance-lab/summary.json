@@ -2827,8 +2827,16 @@
         }
       },
       "selection": {
+        "selection_policy": "human_visual_priority",
         "safe_ids": [],
-        "recommended_ids": [],
+        "recommended_ids": [
+          "A-0.300",
+          "A-0.500"
+        ],
+        "diagnostic_failed_recommended_ids": [
+          "A-0.300",
+          "A-0.500"
+        ],
         "unreviewed_ids": []
       },
       "repeatability": {
@@ -11154,8 +11162,16 @@
         }
       },
       "selection": {
+        "selection_policy": "human_visual_priority",
         "safe_ids": [],
-        "recommended_ids": [],
+        "recommended_ids": [
+          "A-0.500",
+          "A-0.300"
+        ],
+        "diagnostic_failed_recommended_ids": [
+          "A-0.500",
+          "A-0.300"
+        ],
         "unreviewed_ids": []
       },
       "repeatability": {
@@ -14653,8 +14669,14 @@
         }
       },
       "selection": {
+        "selection_policy": "human_visual_priority",
         "safe_ids": [],
-        "recommended_ids": [],
+        "recommended_ids": [
+          "A-1.000"
+        ],
+        "diagnostic_failed_recommended_ids": [
+          "A-1.000"
+        ],
         "unreviewed_ids": []
       },
       "repeatability": {
