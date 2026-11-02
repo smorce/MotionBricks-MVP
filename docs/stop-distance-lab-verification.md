@@ -1,0 +1,62 @@
+# ロゼ停止距離比較ラボの検証
+
+基準は PR #5 の `d0e24a5`。着手時にリモート先端との一致を確認した。通常停止の制御判断は変更せず、距離測定CLIと比較ページを実験用に追加した。
+
+## 実験の契約
+
+`stop_replay.py` の保存履歴を入力とし、候補ごとに新しい公式キャラクターへ履歴・接地を復元する。入力JSONのSHA-256を状態IDとする。直近４姿勢・全履歴・速度・方向・支持足・接地信頼度・床校正を保存する。速度は末尾の姿勢間隔から計算する。履歴末尾のdelta timeは0なので、その直前の区間を使う。
+
+A/BはSOMA F001の１姿勢を４枠に複製し、モデルには１姿勢として指定する。C/Dは公式SOMA Idleクリップの連続４姿勢を使う。VRMAは目標に使わない。IdleのルートをランタイムのZ-upへ変換し、骨のローカル並進は保存状態の寸法へ合わせる。床高さと進行方向へ配置する。目標姿勢そのものと生成設定もJSONに保存する。
+
+B/Dは開始状態の支持足を公式IKで捕捉し、再生採取時に重み1で固定する。A/Cには足固定を掛けない。既存の段階生成・腰下げ・遊脚着地補正はこの経路では使わない。既存の補正付きF001生成は `legacy` として別枠で試行し、生成前に拒否された場合も理由を残す。
+
+診断は既存の `validate_stop_motion` / `diagnose_stop` を使う。到着、床、骨長、膝、関節連続性、支持足滑り、遊脚の持ち上げ、終端安定性を別々に記録する。総ルート移動距離は経路長、画面上の現在変位は開始位置からの直線距離。停止時刻はルート速度が以降0.05m/s未満となる最初の時刻。着地時刻は公式接地信頼度0.5の立ち上がりで、靴底接地の保証ではない。
+
+安全に停止できる距離は状態別の集合 `safe_distances_m` として保存する。異なる状態を平均しない。安全合格かつ人間が「自然」と評価した候補だけを推奨し、到着誤差・足滑り・生成時間で順序付ける。「崩れ」は除外し、未確認は未評価のまま残す。安全不合格を人間の評価で上書きしない。
+
+## 測定と成果物
+
+通常速度は15/20/30/40/50/60/80/100/120cmでA〜Dを比較。左右遊脚・旋回後は30/50/100cmで比較した。各状態の入力、全生成姿勢、接地、診断、目標姿勢は `metrics/stop-distance-lab/measurements.zip` に保存する。展開後の `comparison.json` を比較画面で選ぶ。主要数値は同ディレクトリの `summary.json` にも記録する。
+
+今回の測定状態では安全診断を満たす距離を確認できなかった。距離集合と推奨候補は空であり、「自然な停止距離を特定済み」とは扱わない。到着誤差だけが小さい候補も、足滑り・遊脚・姿勢などの不合格を維持して比較表示する。成功／失敗の境界がないため、境界の追加探索は実行されない。`--refine` は合否が切り替わる区間を2.5cm幅まで二分する。
+
+目視JSONは保存経路を自動検証したもので、全件未確認。自然さの人間による採点は未実施。動画は生成された停止区間から終端保持までを収録した。別のIdleクリップへの接続品質は未検証であり、Idle移行の完了証拠とはしない。通常制御への適用（Phase 7）は、安全かつ自然と確認された候補が得られるまで保留する。
+
+## 比較画面
+
+`npm run dev` を `web` で実行し、`http://127.0.0.1:5188/stop-distance-lab.html` を開く。ロゼ.vrmと展開済み比較JSONを選択する。4/6/8体の実VRMを同期再生でき、開始候補番号（0始まり）で後続候補へ切り替える。正面・側面・45度は進行方向を基準に共通条件で表示する。短いモーションは終端姿勢を保持する。
+
+元の実験室とSOMA→VRMのボーン対応、座標系変換、姿勢適用を `somaRetarget.js` で共有する。足幅などの保存済みスライダー設定も適用する。家具は置かず、終端保持を比較する。既存のGroundedIdleによる上半身呼吸は実験ビューアには加えていない。
+
+各候補の評価とメモはJSONへ保存でき、再生時刻と状態IDを含む。比較画像のダウンロードと、4体・8体のスクリーンショット、ブラウザ録画を実機のChromeで確認した。画像は `quarter.png` / `eight-candidates.png` / `comparison-image.png`、動画は `synchronized.webm`。人間による自然さの評価とは区別する。
+
+## 通常制御の回帰
+
+目的地を補正せず、元の目的地に対する最終ルート誤差を測定した。通常停止ロジックは基準コミットと同じ。
+
+|条件|結果|誤差|
+|---|---|---|
+|30cm|settled|約0m|
+|30cm直後の50cm|stop_failed|0.0703m|
+|単独50cm|settled|約0m|
+|1m|settled|約0m|
+|2m|settled|約0m|
+|5m|stop_failed|0.2329m|
+|方向転換|settled|約0m|
+|再歩行|settled|約0m|
+
+`navigation.json` が生の結果。失敗を到着成功として扱わない。新しい距離選択を本番へ適用していないため、この結果は新方式の改善効果を示すものではない。
+
+Pythonは127件、JavaScriptは25件成功。ブラウザ検証では4/8体表示、同期再生、シーク、視点切替、候補切替、評価JSON、比較画像保存、ページ例外なしを確認した。生成再現性は状態ごとの最初の候補を同一入力で２回推論して記録し、全候補やGPU乱数一般の決定性を保証しない。
+
+## 再実行
+
+MotionBricks本体のPython環境を指定し、`MOTIONBRICKS_ROOT` を設定する。以下の `python` は使用する環境のPython実体を `uv run --python` で明示してもよい。
+
+```powershell
+uv run --link-mode=copy python backend/stop_distance_probe.py metrics/stop-measured/normal-speed.json --output metrics/stop-distance-lab --refine
+uv run --link-mode=copy python backend/stop_distance_probe.py metrics/stop-distance-lab/comparison.json --evaluate --reviews metrics/stop-distance-lab/reviews.json --output metrics/stop-distance-lab
+node web/check-stop-distance-lab.mjs
+```
+
+ブラウザ自動検証には `MOTIONBRICKS_PLAYWRIGHT_MODULE` へインストール済みPlaywrightの `index.mjs` を指定する。通常制御の8条件はサーバーを起動し、`MOTIONBRICKS_TEST_PORT` を指定して `node web/check-stop-distance-navigation.mjs` で再実行する。

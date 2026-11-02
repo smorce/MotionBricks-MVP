@@ -21,3 +21,19 @@ ModernRestaurantCafekit/
 
 # キャラクターモデルはローカル配置（server.py がリポジトリ直下を参照）
 /ロゼ.vrm
+
+# 停止距離ラボのレビュー用成果物。展開した全姿勢JSONはZIP内に保存する。
+!metrics/stop-distance-lab/
+metrics/stop-distance-lab/*
+!metrics/stop-distance-lab/summary.json
+!metrics/stop-distance-lab/measurements.zip
+!metrics/stop-distance-lab/navigation.json
+!metrics/stop-distance-lab/reviews.json
+!metrics/stop-distance-lab/selection.json
+!metrics/stop-distance-lab/browser-check.json
+!metrics/stop-distance-lab/front.png
+!metrics/stop-distance-lab/side.png
+!metrics/stop-distance-lab/quarter.png
+!metrics/stop-distance-lab/eight-candidates.png
+!metrics/stop-distance-lab/comparison-image.png
+!metrics/stop-distance-lab/synchronized.webm

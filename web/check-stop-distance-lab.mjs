@@ -13,8 +13,7 @@ try{
  await page.locator('#manifestFile').setInputFiles(out+'/comparison.json');
  await page.locator('#vrmFile').setInputFiles('ロゼ.vrm');
  await page.waitForFunction(()=>!document.querySelector('#play').disabled,null,{timeout:120000});
- await page.locator('#play').click();await page.waitForTimeout(2500);
- await page.locator('#play').click();
+ await page.locator('#loop').uncheck();await page.locator('#play').click();await page.waitForTimeout(2500);
  for(const view of ['front','side','quarter']){await page.locator('#view').selectOption(view);await page.waitForTimeout(300);await page.screenshot({path:out+'/'+view+'.png'});}
  const shotPromise=page.waitForEvent('download');await page.locator('#shot').click();await (await shotPromise).saveAs(out+'/comparison-image.png');
  await page.locator('#count').selectOption('8');
