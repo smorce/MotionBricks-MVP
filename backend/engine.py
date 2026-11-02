@@ -439,6 +439,10 @@ def _drain(commands: Queue, nav: NavState, cycle=None):
             goal = np.array([result.move_to[0], result.move_to[1], 0.0], dtype=np.float32)
             if cycle is not None:
                 cycle.retarget_settings = cmd.get('retarget_settings', {})
+                if cmd.get('stop_mode') in ('visual', 'legacy'):
+                    cycle.stop_mode = cmd['stop_mode']
+                else:
+                    cycle.stop_mode = getattr(cycle, 'default_stop_mode', 'legacy')
     return nav, goal
 
 
@@ -497,6 +501,9 @@ def worker(commands: Queue, publish):
         cycle = LocomotionCycle()
         from visual_stop_runtime import VisualStopRuntime
         visual_stop = VisualStopRuntime() if os.environ.get('MOTIONBRICKS_VISUAL_STOP') == '1' else None
+        visual_stop_cache = visual_stop
+        cycle.stop_mode = 'visual' if visual_stop else 'legacy'
+        cycle.default_stop_mode = cycle.stop_mode
         cycle.ground_calibration = stop_ground
         comparison_idle = None
         if os.environ.get('MOTIONBRICKS_COMPARISON_REPLAY'):
@@ -520,6 +527,11 @@ def worker(commands: Queue, publish):
                 return
             nav, moved = drained
             if moved is not None:
+                if cycle.stop_mode == 'visual' and visual_stop_cache is None:
+                    visual_stop_cache = VisualStopRuntime()
+                visual_stop = visual_stop_cache if cycle.stop_mode == 'visual' else None
+                if visual_stop:
+                    visual_stop.selection = None
                 comparison_start = os.environ.get('MOTIONBRICKS_COMPARISON_REPLAY')
                 if comparison_start and nav.move_id != 2:
                     from stop_replay import load_replay, restore_history
@@ -664,6 +676,8 @@ def worker(commands: Queue, publish):
                 {
                     "type": "frame",
                     "visual_selection": visual_stop.selection if visual_stop else None,
+                    "stop_mode": cycle.stop_mode,
+                    "destination_xy": None if cycle.goal is None else cycle.goal[:2].tolist(),
                     "phase": cycle.phase,
                     "official_state": character.state_machine.state.name,
                     "actual_speed_mps": round(root_speed, 3),

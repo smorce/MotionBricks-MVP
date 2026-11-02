@@ -1,0 +1,28 @@
+{
+  "errors": [],
+  "results": [
+    {
+      "mode": "visual",
+      "dx": 2,
+      "dy": 0,
+      "phase": "settled",
+      "selected": "A-1.000",
+      "x_m": 1,
+      "display": "実行方式：目視11候補 / 右脚が遊脚\nA-1.000 / X=100cm / 類似度 75%\nF001 / 足固定なし\n停止済み・GroundedIdleへ移行 / 目的地まで 0.00m\n新しい実動作の自然さ：評価待ち"
+    },
+    {
+      "mode": "visual",
+      "dx": 1,
+      "dy": 0,
+      "phase": "stop_failed",
+      "display": "実行方式：目視11候補 / 現在の状態は未確認 / 目的地まで 0.14m\n評価済み条件に一致しなかったため、この姿勢で停止しています。"
+    },
+    {
+      "mode": "legacy",
+      "dx": 0.3,
+      "dy": 0,
+      "phase": "settled",
+      "display": "実行方式：従来の停止制御"
+    }
+  ]
+}

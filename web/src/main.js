@@ -12,6 +12,7 @@ import {emptyOwner, reduceOwner, shouldApplyStance} from './poseOwner.js';
 import {isSceneBootReady, spawnOffset} from './bootGate.js';
 import {GaitDebug} from './gaitDebug.js';
 import {formatGaitStatus} from './gaitView.js';
+import {formatVisualStop} from './visualStopView.js';
 import {compareFootHeights} from './footHeightDiagnostics.js';
 import idleMotionUrl from '../../motions/idle.vrma?url';
 import idleBreakMotionUrl from '../../motions/idle_06.vrma?url';
@@ -148,7 +149,7 @@ if (new URLSearchParams(location.search).has('observation')) {
         throw new Error('Scene is not ready');
       }
       socket.send(JSON.stringify({type:'move', x:lastFrame.poses[0][0]+dx,
-        y:lastFrame.poses[0][1]+dy, hold_stance:true}));
+        y:lastFrame.poses[0][1]+dy, hold_stance:true, stop_mode:document.querySelector('#stopMode').value}));
     },
     capture() {
       if (!vrm || !sceneReady || !lastFrame) throw new Error('Scene is not ready');
@@ -699,7 +700,7 @@ function sendArrival(usecase, x, z){
   clickAt=performance.now();
   lastDecision=`${usecase.title} を選択中…`;
   const goal=threePointToRuntime(x-spawn.x, z-spawn.z);
-  socket.send(JSON.stringify({type:'move', x:goal.x, y:goal.y, usecase:usecase.id, intent:usecase.intent, hold_stance:usecase.id==='open-floor', retarget_settings:currentStance()}));
+  socket.send(JSON.stringify({type:'move', x:goal.x, y:goal.y, usecase:usecase.id, intent:usecase.intent, hold_stance:usecase.id==='open-floor', retarget_settings:currentStance(), stop_mode:document.querySelector('#stopMode').value}));
 }
 function buildUsecaseList(){
   const root=document.querySelector('#cases');
@@ -727,6 +728,7 @@ function connect(){
     }
     if(msg.type==='collect_candidate') reviewCollect(msg);
     if(msg.type==='frame'){
+      document.querySelector('#visualStopStatus').textContent=formatVisualStop(msg);
       if(owner.seenMove!=null && msg.gait?.move_id!=null && msg.gait.move_id<owner.seenMove) return;
       if(msg.gait?.move_id===owner.moveId && msg.gait?.settle_seq<owner.settleSeq) return;
       if(msg.phase){

@@ -41,3 +41,15 @@ class VisualStopTests(unittest.TestCase):
         for pose in state['recent_poses']:
             pose[0][0] += 5
         self.assertEqual(select_stop(state, .15, self.rows)['status'], 'matched')
+
+    def test_same_gait_in_another_world_heading_matches(self):
+        from quats import quat_mul
+        import numpy as np
+        state = copy.deepcopy(self.rows[0]['context'])
+        rotation = np.array([0., 0., np.sin(np.pi/4), np.cos(np.pi/4)])
+        state['direction'] = [-state['direction'][1], state['direction'][0]]
+        for pose in state['recent_poses']:
+            x, y = pose[0][:2]
+            pose[0][:2] = [-y, x]
+            pose[0][3:] = quat_mul(rotation, np.asarray(pose[0][3:])).tolist()
+        self.assertEqual(select_stop(state, .15, self.rows)['status'], 'matched')

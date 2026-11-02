@@ -159,7 +159,8 @@ async def ws_endpoint(ws: WebSocket):
                 move_id = next(move_ids)
                 request_numbers[ws] = move_id
                 commands.put({'type':'move','x':float(msg['x']),'y':float(msg['y']),'move_id':move_id, 'hold_stance':msg.get('hold_stance') is True,
-                              'retarget_settings':msg.get('retarget_settings',{})})
+                              'retarget_settings':msg.get('retarget_settings',{}),
+                              'stop_mode':msg.get('stop_mode')})
                 asyncio.create_task(route_and_submit(ws, msg, move_id))
     except WebSocketDisconnect:
         pass
