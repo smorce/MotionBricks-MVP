@@ -6,6 +6,9 @@ web/node_modules/
 .env.*
 *.log
 
+# TensorRT engine cache（巨大な .plan を含む）
+.trt-cache/
+
 # 自動探索の途中結果と動画はローカルに保持する。
 metrics/stop-*/
 !metrics/stop-final/

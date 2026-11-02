@@ -1,0 +1,606 @@
+[
+  {
+    "case": "after-turn",
+    "before": {
+      "seconds": [
+        2.1253293000045232,
+        0.5545348000014201
+      ],
+      "accepted": true,
+      "recovery_only": false,
+      "travel_distance_m": null,
+      "reason": "",
+      "selected": 1,
+      "candidate_reasons": [
+        "Stop joint rotation discontinuity",
+        ""
+      ],
+      "repeatability": {
+        "equal": true,
+        "shape_equal": true,
+        "max_absolute_difference": 0.0
+      }
+    },
+    "after": {
+      "seconds": [
+        0.6463726999936625,
+        0.6154335000319406
+      ],
+      "accepted": true,
+      "recovery_only": false,
+      "travel_distance_m": 0.20000000670552254,
+      "reason": "",
+      "selected": 1,
+      "candidate_reasons": [
+        "Stop joint rotation discontinuity",
+        ""
+      ],
+      "repeatability": {
+        "equal": true,
+        "shape_equal": true,
+        "max_absolute_difference": 0.0
+      }
+    }
+  },
+  {
+    "case": "decelerating",
+    "before": {
+      "seconds": [
+        2.2157139999908395,
+        1.967532199982088
+      ],
+      "accepted": true,
+      "recovery_only": false,
+      "travel_distance_m": null,
+      "reason": "",
+      "selected": 6,
+      "candidate_reasons": [
+        "Unreachable pinned target: {'support_side': 'left', 'support_target_error_m': 0.016039710885573474, 'support_target_toe_error_m': 0.0160397144502772, 'support_target_error_3d_m': 0.03234843117003584, 'support_target_direction_error_rad': 8.312464316873047e-08}",
+        "Stop feet did not land",
+        "Unreachable pinned target: {'support_side': 'left', 'support_target_error_m': 0.03975448246689045, 'support_target_toe_error_m': 0.03975448941433099, 'support_target_error_3d_m': 0.08492535890876535, 'support_target_direction_error_rad': 7.967671544761858e-08}",
+        "Stop feet did not land",
+        "Unreachable pinned target: {'support_side': 'left', 'support_target_error_m': 0.016039710885573474, 'support_target_toe_error_m': 0.0160397144502772, 'support_target_error_3d_m': 0.03234843117003584, 'support_target_direction_error_rad': 8.312464316873047e-08}",
+        "Stop feet did not land",
+        ""
+      ],
+      "repeatability": {
+        "equal": true,
+        "shape_equal": true,
+        "max_absolute_difference": 0.0
+      }
+    },
+    "after": {
+      "seconds": [
+        2.882177599996794,
+        3.243412099953275
+      ],
+      "accepted": false,
+      "recovery_only": false,
+      "travel_distance_m": 0.0,
+      "reason": "No safe stop candidate",
+      "selected": null,
+      "candidate_reasons": [
+        "Unreachable pinned target: {'support_side': 'left', 'support_target_error_m': 0.016039710885573474, 'support_target_toe_error_m': 0.0160397144502772, 'support_target_error_3d_m': 0.03234843117003584, 'support_target_direction_error_rad': 8.312464316873047e-08}",
+        "Stop feet did not land",
+        "Unreachable pinned target: {'support_side': 'left', 'support_target_error_m': 0.03975448246689045, 'support_target_toe_error_m': 0.03975448941433099, 'support_target_error_3d_m': 0.08492535890876535, 'support_target_direction_error_rad': 7.967671544761858e-08}",
+        "Stop feet did not land",
+        "Unreachable pinned target: {'support_side': 'left', 'support_target_error_m': 0.016039710885573474, 'support_target_toe_error_m': 0.0160397144502772, 'support_target_error_3d_m': 0.03234843117003584, 'support_target_direction_error_rad': 8.312464316873047e-08}",
+        "Stop feet did not land",
+        "Stop trajectory passed destination or moved backward",
+        "Stop feet did not land"
+      ],
+      "repeatability": null
+    }
+  },
+  {
+    "case": "distance-1m",
+    "before": {
+      "seconds": [
+        0.48356670001521707,
+        0.48198219999903813
+      ],
+      "accepted": true,
+      "recovery_only": true,
+      "travel_distance_m": null,
+      "reason": "",
+      "selected": null,
+      "candidate_reasons": [
+        "Unreachable pinned target: {'support_side': 'left', 'support_target_error_m': 0.5933749863050417, 'support_target_toe_error_m': 0.5933749888462092, 'support_target_error_3d_m': 0.6900447487972015, 'support_target_direction_error_rad': 3.082801225406939e-08}",
+        "Unreachable pinned target: {'support_side': 'right', 'support_target_error_m': 0.1820886814526441, 'support_target_toe_error_m': 0.1820886808563577, 'support_target_error_3d_m': 0.2607625501785928, 'support_target_direction_error_rad': 1.0546427089974664e-07}",
+        "Unreachable pinned target: {'support_side': 'left', 'support_target_error_m': 0.6080592210079796, 'support_target_toe_error_m': 0.6080592241424648, 'support_target_error_3d_m': 0.7215157721678027, 'support_target_direction_error_rad': 1.9300599268801122e-07}",
+        "Unreachable pinned target: {'support_side': 'right', 'support_target_error_m': 0.20460128428667823, 'support_target_toe_error_m': 0.20460128389264387, 'support_target_error_3d_m': 0.3044678961348527, 'support_target_direction_error_rad': 1.0072566308805264e-08}",
+        "Unreachable pinned target: {'support_side': 'left', 'support_target_error_m': 0.5933749863050417, 'support_target_toe_error_m': 0.5933749888462092, 'support_target_error_3d_m': 0.6900447487972015, 'support_target_direction_error_rad': 3.082801225406939e-08}",
+        "Unreachable pinned target: {'support_side': 'right', 'support_target_error_m': 0.1820886814526441, 'support_target_toe_error_m': 0.1820886808563577, 'support_target_error_3d_m': 0.2607625501785928, 'support_target_direction_error_rad': 1.0546427089974664e-07}",
+        "Unreachable pinned target: {'support_side': 'left', 'support_target_error_m': 0.5837135442665715, 'support_target_toe_error_m': 0.5837135449784381, 'support_target_error_3d_m': 0.6700141447936718, 'support_target_direction_error_rad': 5.710287109828016e-08}",
+        "Unreachable pinned target: {'support_side': 'right', 'support_target_error_m': 0.16656180450275734, 'support_target_toe_error_m': 0.16656180637827542, 'support_target_error_3d_m': 0.2324885780305093, 'support_target_direction_error_rad': 4.271836637204096e-08}"
+      ],
+      "repeatability": {
+        "equal": true,
+        "shape_equal": true,
+        "max_absolute_difference": 0.0
+      }
+    },
+    "after": {
+      "seconds": [
+        0.4839399000047706,
+        0.4851848999969661
+      ],
+      "accepted": true,
+      "recovery_only": true,
+      "travel_distance_m": 0.0,
+      "reason": "",
+      "selected": null,
+      "candidate_reasons": [
+        "Unreachable pinned target: {'support_side': 'left', 'support_target_error_m': 0.5933749863050417, 'support_target_toe_error_m': 0.5933749888462092, 'support_target_error_3d_m': 0.6900447487972015, 'support_target_direction_error_rad': 3.082801225406939e-08}",
+        "Unreachable pinned target: {'support_side': 'right', 'support_target_error_m': 0.1820886814526441, 'support_target_toe_error_m': 0.1820886808563577, 'support_target_error_3d_m': 0.2607625501785928, 'support_target_direction_error_rad': 1.0546427089974664e-07}",
+        "Unreachable pinned target: {'support_side': 'left', 'support_target_error_m': 0.6080592210079796, 'support_target_toe_error_m': 0.6080592241424648, 'support_target_error_3d_m': 0.7215157721678027, 'support_target_direction_error_rad': 1.9300599268801122e-07}",
+        "Unreachable pinned target: {'support_side': 'right', 'support_target_error_m': 0.20460128428667823, 'support_target_toe_error_m': 0.20460128389264387, 'support_target_error_3d_m': 0.3044678961348527, 'support_target_direction_error_rad': 1.0072566308805264e-08}",
+        "Unreachable pinned target: {'support_side': 'left', 'support_target_error_m': 0.5933749863050417, 'support_target_toe_error_m': 0.5933749888462092, 'support_target_error_3d_m': 0.6900447487972015, 'support_target_direction_error_rad': 3.082801225406939e-08}",
+        "Unreachable pinned target: {'support_side': 'right', 'support_target_error_m': 0.1820886814526441, 'support_target_toe_error_m': 0.1820886808563577, 'support_target_error_3d_m': 0.2607625501785928, 'support_target_direction_error_rad': 1.0546427089974664e-07}",
+        "Unreachable pinned target: {'support_side': 'left', 'support_target_error_m': 0.5837135442665715, 'support_target_toe_error_m': 0.5837135449784381, 'support_target_error_3d_m': 0.6700141447936718, 'support_target_direction_error_rad': 5.710287109828016e-08}",
+        "Unreachable pinned target: {'support_side': 'right', 'support_target_error_m': 0.16656180450275734, 'support_target_toe_error_m': 0.16656180637827542, 'support_target_error_3d_m': 0.2324885780305093, 'support_target_direction_error_rad': 4.271836637204096e-08}"
+      ],
+      "repeatability": {
+        "equal": true,
+        "shape_equal": true,
+        "max_absolute_difference": 0.0
+      }
+    }
+  },
+  {
+    "case": "distance-20cm",
+    "before": {
+      "seconds": [
+        1.0709827999817207,
+        0.9787115999497473
+      ],
+      "accepted": true,
+      "recovery_only": false,
+      "travel_distance_m": null,
+      "reason": "",
+      "selected": 3,
+      "candidate_reasons": [
+        "Unreachable pinned target: {'support_side': 'left', 'support_target_error_m': 0.052555606975972294, 'support_target_toe_error_m': 0.05255561738080379, 'support_target_error_3d_m': 0.09433752983860579, 'support_target_direction_error_rad': 3.2481702788578204e-07}",
+        "Stop joint rotation discontinuity",
+        "Unreachable pinned target: {'support_side': 'left', 'support_target_error_m': 0.07656596541950332, 'support_target_toe_error_m': 0.07656596845629557, 'support_target_error_3d_m': 0.14472279709774552, 'support_target_direction_error_rad': 1.5723000573730772e-07}",
+        ""
+      ],
+      "repeatability": {
+        "equal": true,
+        "shape_equal": true,
+        "max_absolute_difference": 0.0
+      }
+    },
+    "after": {
+      "seconds": [
+        1.2746036000316963,
+        2.3304878000053577
+      ],
+      "accepted": true,
+      "recovery_only": false,
+      "travel_distance_m": 0.20000001788139343,
+      "reason": "",
+      "selected": 3,
+      "candidate_reasons": [
+        "Unreachable pinned target: {'support_side': 'left', 'support_target_error_m': 0.052555606975972294, 'support_target_toe_error_m': 0.05255561738080379, 'support_target_error_3d_m': 0.09433752983860579, 'support_target_direction_error_rad': 3.2481702788578204e-07}",
+        "Stop joint rotation discontinuity",
+        "Unreachable pinned target: {'support_side': 'left', 'support_target_error_m': 0.07656596541950332, 'support_target_toe_error_m': 0.07656596845629557, 'support_target_error_3d_m': 0.14472279709774552, 'support_target_direction_error_rad': 1.5723000573730772e-07}",
+        ""
+      ],
+      "repeatability": {
+        "equal": true,
+        "shape_equal": true,
+        "max_absolute_difference": 0.0
+      }
+    }
+  },
+  {
+    "case": "distance-50cm",
+    "before": {
+      "seconds": [
+        1.6399937000242062,
+        1.7652741000056267
+      ],
+      "accepted": true,
+      "recovery_only": true,
+      "travel_distance_m": null,
+      "reason": "",
+      "selected": null,
+      "candidate_reasons": [
+        "Unreachable pinned target: {'support_side': 'left', 'support_target_error_m': 0.20930196907331033, 'support_target_toe_error_m': 0.20930197333030243, 'support_target_error_3d_m': 0.288904088785908, 'support_target_direction_error_rad': 1.5623343285753322e-07}",
+        "Stop joint rotation discontinuity",
+        "Unreachable pinned target: {'support_side': 'left', 'support_target_error_m': 0.23132402370966573, 'support_target_toe_error_m': 0.2313240281703275, 'support_target_error_3d_m': 0.3310586569056442, 'support_target_direction_error_rad': 3.1148780221812444e-09}",
+        "Unreachable pinned target: {'support_side': 'right', 'support_target_error_m': 0.014807098948996112, 'support_target_toe_error_m': 0.0148070974656079, 'support_target_error_3d_m': 0.04780895533446727, 'support_target_direction_error_rad': 7.75945175335302e-08}",
+        "Unreachable pinned target: {'support_side': 'left', 'support_target_error_m': 0.20930196907331033, 'support_target_toe_error_m': 0.20930197333030243, 'support_target_error_3d_m': 0.288904088785908, 'support_target_direction_error_rad': 1.5623343285753322e-07}",
+        "Stop joint rotation discontinuity",
+        "Unreachable pinned target: {'support_side': 'left', 'support_target_error_m': 0.19421222066117483, 'support_target_toe_error_m': 0.19421222414653969, 'support_target_error_3d_m': 0.2617070076248598, 'support_target_direction_error_rad': 1.0474307310381903e-07}",
+        "Stop joint rotation discontinuity"
+      ],
+      "repeatability": {
+        "equal": true,
+        "shape_equal": true,
+        "max_absolute_difference": 0.0
+      }
+    },
+    "after": {
+      "seconds": [
+        1.7044476000010036,
+        1.6098223999724723
+      ],
+      "accepted": true,
+      "recovery_only": true,
+      "travel_distance_m": 0.0,
+      "reason": "",
+      "selected": null,
+      "candidate_reasons": [
+        "Unreachable pinned target: {'support_side': 'left', 'support_target_error_m': 0.20930196907331033, 'support_target_toe_error_m': 0.20930197333030243, 'support_target_error_3d_m': 0.288904088785908, 'support_target_direction_error_rad': 1.5623343285753322e-07}",
+        "Stop joint rotation discontinuity",
+        "Unreachable pinned target: {'support_side': 'left', 'support_target_error_m': 0.23132402370966573, 'support_target_toe_error_m': 0.2313240281703275, 'support_target_error_3d_m': 0.3310586569056442, 'support_target_direction_error_rad': 3.1148780221812444e-09}",
+        "Unreachable pinned target: {'support_side': 'right', 'support_target_error_m': 0.014807098948996112, 'support_target_toe_error_m': 0.0148070974656079, 'support_target_error_3d_m': 0.04780895533446727, 'support_target_direction_error_rad': 7.75945175335302e-08}",
+        "Unreachable pinned target: {'support_side': 'left', 'support_target_error_m': 0.20930196907331033, 'support_target_toe_error_m': 0.20930197333030243, 'support_target_error_3d_m': 0.288904088785908, 'support_target_direction_error_rad': 1.5623343285753322e-07}",
+        "Stop joint rotation discontinuity",
+        "Unreachable pinned target: {'support_side': 'left', 'support_target_error_m': 0.19421222066117483, 'support_target_toe_error_m': 0.19421222414653969, 'support_target_error_3d_m': 0.2617070076248598, 'support_target_direction_error_rad': 1.0474307310381903e-07}",
+        "Stop joint rotation discontinuity"
+      ],
+      "repeatability": {
+        "equal": true,
+        "shape_equal": true,
+        "max_absolute_difference": 0.0
+      }
+    }
+  },
+  {
+    "case": "double-contact",
+    "before": {
+      "seconds": [
+        0.3063877999666147,
+        0.3541222999920137
+      ],
+      "accepted": true,
+      "recovery_only": false,
+      "travel_distance_m": null,
+      "reason": "",
+      "selected": 0,
+      "candidate_reasons": [
+        ""
+      ],
+      "repeatability": {
+        "equal": true,
+        "shape_equal": true,
+        "max_absolute_difference": 0.0
+      }
+    },
+    "after": {
+      "seconds": [
+        0.33829210000112653,
+        0.37197600002400577
+      ],
+      "accepted": true,
+      "recovery_only": false,
+      "travel_distance_m": 0.2000000008411007,
+      "reason": "",
+      "selected": 0,
+      "candidate_reasons": [
+        ""
+      ],
+      "repeatability": {
+        "equal": true,
+        "shape_equal": true,
+        "max_absolute_difference": 0.0
+      }
+    }
+  },
+  {
+    "case": "idle-restart",
+    "before": {
+      "seconds": [
+        0.33421659999294207,
+        0.267421500000637
+      ],
+      "accepted": true,
+      "recovery_only": false,
+      "travel_distance_m": null,
+      "reason": "",
+      "selected": 0,
+      "candidate_reasons": [
+        ""
+      ],
+      "repeatability": {
+        "equal": true,
+        "shape_equal": true,
+        "max_absolute_difference": 0.0
+      }
+    },
+    "after": {
+      "seconds": [
+        0.3819303000345826,
+        0.38770999998087063
+      ],
+      "accepted": true,
+      "recovery_only": false,
+      "travel_distance_m": 0.20000004768371582,
+      "reason": "",
+      "selected": 0,
+      "candidate_reasons": [
+        ""
+      ],
+      "repeatability": {
+        "equal": true,
+        "shape_equal": true,
+        "max_absolute_difference": 0.0
+      }
+    }
+  },
+  {
+    "case": "large-stride",
+    "before": {
+      "seconds": [
+        2.158796400006395,
+        1.9614218999631703
+      ],
+      "accepted": true,
+      "recovery_only": false,
+      "travel_distance_m": null,
+      "reason": "",
+      "selected": 7,
+      "candidate_reasons": [
+        "Unreachable pinned target: {'support_side': 'left', 'support_target_error_m': 0.028020807263627306, 'support_target_toe_error_m': 0.02802079751031636, 'support_target_error_3d_m': 0.057845007353392194, 'support_target_direction_error_rad': 1.1173722525015249e-07}",
+        "Stop joint rotation discontinuity",
+        "Unreachable pinned target: {'support_side': 'left', 'support_target_error_m': 0.050722168356583, 'support_target_toe_error_m': 0.05072216708636038, 'support_target_error_3d_m': 0.11077195621922821, 'support_target_direction_error_rad': 6.60697209164951e-08}",
+        "Stop joint rotation discontinuity",
+        "Unreachable pinned target: {'support_side': 'left', 'support_target_error_m': 0.028020807263627306, 'support_target_toe_error_m': 0.02802079751031636, 'support_target_error_3d_m': 0.057845007353392194, 'support_target_direction_error_rad': 1.1173722525015249e-07}",
+        "Stop joint rotation discontinuity",
+        "Unreachable pinned target: {'support_side': 'left', 'support_target_error_m': 0.011614926450352808, 'support_target_toe_error_m': 0.011614932112327137, 'support_target_error_3d_m': 0.023065213152202863, 'support_target_direction_error_rad': 1.324320694218173e-07}",
+        ""
+      ],
+      "repeatability": {
+        "equal": true,
+        "shape_equal": true,
+        "max_absolute_difference": 0.0
+      }
+    },
+    "after": {
+      "seconds": [
+        2.2664351999992505,
+        2.2867487000185065
+      ],
+      "accepted": true,
+      "recovery_only": false,
+      "travel_distance_m": 0.20000000298023224,
+      "reason": "",
+      "selected": 7,
+      "candidate_reasons": [
+        "Unreachable pinned target: {'support_side': 'left', 'support_target_error_m': 0.028020807263627306, 'support_target_toe_error_m': 0.02802079751031636, 'support_target_error_3d_m': 0.057845007353392194, 'support_target_direction_error_rad': 1.1173722525015249e-07}",
+        "Stop joint rotation discontinuity",
+        "Unreachable pinned target: {'support_side': 'left', 'support_target_error_m': 0.050722168356583, 'support_target_toe_error_m': 0.05072216708636038, 'support_target_error_3d_m': 0.11077195621922821, 'support_target_direction_error_rad': 6.60697209164951e-08}",
+        "Stop joint rotation discontinuity",
+        "Unreachable pinned target: {'support_side': 'left', 'support_target_error_m': 0.028020807263627306, 'support_target_toe_error_m': 0.02802079751031636, 'support_target_error_3d_m': 0.057845007353392194, 'support_target_direction_error_rad': 1.1173722525015249e-07}",
+        "Stop joint rotation discontinuity",
+        "Unreachable pinned target: {'support_side': 'left', 'support_target_error_m': 0.011614926450352808, 'support_target_toe_error_m': 0.011614932112327137, 'support_target_error_3d_m': 0.023065213152202863, 'support_target_direction_error_rad': 1.324320694218173e-07}",
+        ""
+      ],
+      "repeatability": {
+        "equal": true,
+        "shape_equal": true,
+        "max_absolute_difference": 0.0
+      }
+    }
+  },
+  {
+    "case": "left-swing",
+    "before": {
+      "seconds": [
+        0.31448030000319704,
+        0.3186040000291541
+      ],
+      "accepted": true,
+      "recovery_only": false,
+      "travel_distance_m": null,
+      "reason": "",
+      "selected": 0,
+      "candidate_reasons": [
+        ""
+      ],
+      "repeatability": {
+        "equal": true,
+        "shape_equal": true,
+        "max_absolute_difference": 0.0
+      }
+    },
+    "after": {
+      "seconds": [
+        0.4100185999996029,
+        0.44822560000466183
+      ],
+      "accepted": true,
+      "recovery_only": false,
+      "travel_distance_m": 0.19999998807907104,
+      "reason": "",
+      "selected": 0,
+      "candidate_reasons": [
+        ""
+      ],
+      "repeatability": {
+        "equal": true,
+        "shape_equal": true,
+        "max_absolute_difference": 0.0
+      }
+    }
+  },
+  {
+    "case": "live-joint-discontinuity",
+    "before": {
+      "seconds": [
+        1.3753315000212751,
+        1.1260033000144176
+      ],
+      "accepted": true,
+      "recovery_only": false,
+      "travel_distance_m": null,
+      "reason": "",
+      "selected": 3,
+      "candidate_reasons": [
+        "Unreachable pinned target: {'support_side': 'right', 'support_target_error_m': 0.039014002465922286, 'support_target_toe_error_m': 0.03901401001012179, 'support_target_error_3d_m': 0.06893609763642324, 'support_target_direction_error_rad': 5.359067922761085e-08}",
+        "Stop joint rotation discontinuity",
+        "Unreachable pinned target: {'support_side': 'right', 'support_target_error_m': 0.06388699968619434, 'support_target_toe_error_m': 0.06388701258339044, 'support_target_error_3d_m': 0.11899416793351617, 'support_target_direction_error_rad': 1.7698379761732497e-07}",
+        ""
+      ],
+      "repeatability": {
+        "equal": true,
+        "shape_equal": true,
+        "max_absolute_difference": 0.0
+      }
+    },
+    "after": {
+      "seconds": [
+        1.4606334999552928,
+        1.3164561000303365
+      ],
+      "accepted": true,
+      "recovery_only": false,
+      "travel_distance_m": 0.1640782491392363,
+      "reason": "",
+      "selected": 3,
+      "candidate_reasons": [
+        "Unreachable pinned target: {'support_side': 'right', 'support_target_error_m': 0.039014002465922286, 'support_target_toe_error_m': 0.03901401001012179, 'support_target_error_3d_m': 0.06893609763642324, 'support_target_direction_error_rad': 5.359067922761085e-08}",
+        "Stop joint rotation discontinuity",
+        "Unreachable pinned target: {'support_side': 'right', 'support_target_error_m': 0.06388699968619434, 'support_target_toe_error_m': 0.06388701258339044, 'support_target_error_3d_m': 0.11899416793351617, 'support_target_direction_error_rad': 1.7698379761732497e-07}",
+        ""
+      ],
+      "repeatability": {
+        "equal": true,
+        "shape_equal": true,
+        "max_absolute_difference": 0.0
+      }
+    }
+  },
+  {
+    "case": "normal-speed",
+    "before": {
+      "seconds": [
+        1.135713699972257,
+        1.0768089999910444
+      ],
+      "accepted": true,
+      "recovery_only": false,
+      "travel_distance_m": null,
+      "reason": "",
+      "selected": 3,
+      "candidate_reasons": [
+        "Unreachable pinned target: {'support_side': 'left', 'support_target_error_m': 0.052555606975972294, 'support_target_toe_error_m': 0.05255561738080379, 'support_target_error_3d_m': 0.09433752983860579, 'support_target_direction_error_rad': 3.2481702788578204e-07}",
+        "Stop joint rotation discontinuity",
+        "Unreachable pinned target: {'support_side': 'left', 'support_target_error_m': 0.07656596541950332, 'support_target_toe_error_m': 0.07656596845629557, 'support_target_error_3d_m': 0.14472279709774552, 'support_target_direction_error_rad': 1.5723000573730772e-07}",
+        ""
+      ],
+      "repeatability": {
+        "equal": true,
+        "shape_equal": true,
+        "max_absolute_difference": 0.0
+      }
+    },
+    "after": {
+      "seconds": [
+        1.1906595000182278,
+        1.172799699997995
+      ],
+      "accepted": true,
+      "recovery_only": false,
+      "travel_distance_m": 0.20000001788139343,
+      "reason": "",
+      "selected": 3,
+      "candidate_reasons": [
+        "Unreachable pinned target: {'support_side': 'left', 'support_target_error_m': 0.052555606975972294, 'support_target_toe_error_m': 0.05255561738080379, 'support_target_error_3d_m': 0.09433752983860579, 'support_target_direction_error_rad': 3.2481702788578204e-07}",
+        "Stop joint rotation discontinuity",
+        "Unreachable pinned target: {'support_side': 'left', 'support_target_error_m': 0.07656596541950332, 'support_target_toe_error_m': 0.07656596845629557, 'support_target_error_3d_m': 0.14472279709774552, 'support_target_direction_error_rad': 1.5723000573730772e-07}",
+        ""
+      ],
+      "repeatability": {
+        "equal": true,
+        "shape_equal": true,
+        "max_absolute_difference": 0.0
+      }
+    }
+  },
+  {
+    "case": "right-swing",
+    "before": {
+      "seconds": [
+        0.8814193999860436,
+        0.323770200018771
+      ],
+      "accepted": true,
+      "recovery_only": false,
+      "travel_distance_m": null,
+      "reason": "",
+      "selected": 0,
+      "candidate_reasons": [
+        ""
+      ],
+      "repeatability": {
+        "equal": true,
+        "shape_equal": true,
+        "max_absolute_difference": 0.0
+      }
+    },
+    "after": {
+      "seconds": [
+        0.3500952000031248,
+        0.3275112999835983
+      ],
+      "accepted": true,
+      "recovery_only": false,
+      "travel_distance_m": 0.20000004768371582,
+      "reason": "",
+      "selected": 0,
+      "candidate_reasons": [
+        ""
+      ],
+      "repeatability": {
+        "equal": true,
+        "shape_equal": true,
+        "max_absolute_difference": 0.0
+      }
+    }
+  },
+  {
+    "case": "small-stride",
+    "before": {
+      "seconds": [
+        0.30642599996645004,
+        0.3173905999865383
+      ],
+      "accepted": true,
+      "recovery_only": false,
+      "travel_distance_m": null,
+      "reason": "",
+      "selected": 0,
+      "candidate_reasons": [
+        ""
+      ],
+      "repeatability": {
+        "equal": true,
+        "shape_equal": true,
+        "max_absolute_difference": 0.0
+      }
+    },
+    "after": {
+      "seconds": [
+        0.36103720002574846,
+        0.3980287000304088
+      ],
+      "accepted": true,
+      "recovery_only": false,
+      "travel_distance_m": 0.20000000298023224,
+      "reason": "",
+      "selected": 0,
+      "candidate_reasons": [
+        ""
+      ],
+      "repeatability": {
+        "equal": true,
+        "shape_equal": true,
+        "max_absolute_difference": 0.0
+      }
+    }
+  }
+]

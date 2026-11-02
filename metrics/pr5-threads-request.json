@@ -1,0 +1,1 @@
+{"query":"query { repository(owner: \"smorce\", name: \"MotionBricks-MVP\") { pullRequest(number: 5) { reviewThreads(first: 30) { nodes { id isResolved comments(first: 1) { nodes { databaseId } } } } } } }"}
