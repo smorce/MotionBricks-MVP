@@ -260,17 +260,28 @@ def _begin_final_stop(character, pose, goal, rt, wp, destination=None, *, ground
     preferred = replay['metadata']['support']
     specs = candidate_specs(preferred)
     specs = [specs[i] for i in (4, 6, 12, 14, 16, 18)]
+    def diagnose_progress(frames):
+        metrics = diagnose(replay, frames)
+        if metrics['accepted']:
+            data = replay['metadata']
+            reason = validate_stop_progress(
+                frames, pose, goal if destination is None else destination,
+                frames.support, data['parents'], data['names'])
+            if reason:
+                metrics.update(accepted=False, reason=reason)
+        return metrics
+
     result = search_candidates(specs,
         lambda spec: new_character(rt, character.engine, character.asset_pool, replay),
         lambda scratch, spec: generate_candidate(scratch, replay, spec, rt),
-        lambda frames: diagnose(replay, frames), limit=6, stop_on_first=True)
+        diagnose_progress, limit=6, stop_on_first=True)
     frames = result.pop('frames')
     if frames is None:
         refined_specs = refinement_specs(preferred)
         refined = search_candidates([refined_specs[8],refined_specs[10]],
             lambda spec:new_character(rt,character.engine,character.asset_pool,replay),
             lambda scratch,spec:generate_candidate(scratch,replay,spec,rt),
-            lambda values:diagnose(replay,values),limit=2,stop_on_first=True)
+            diagnose_progress,limit=2,stop_on_first=True)
         frames=refined.pop('frames')
         if refined['selected'] is not None:
             result['selected']=len(result['candidates'])+refined['selected']
@@ -297,6 +308,9 @@ def _begin_final_stop(character, pose, goal, rt, wp, destination=None, *, ground
     else:
         selected = result['candidates'][result['selected']]
         metrics = dict(selected['metrics'], search=result, generation_conditions=selected['specification'])
+    metrics['travel_distance_m'] = (
+        float(np.linalg.norm(frames[-1][0, :2] - pose[0, :2]))
+        if frames is not None else 0.0)
     directory = Path(os.environ.get('MOTIONBRICKS_STOP_REPLAY_DIR',
                                       str(Path(__file__).resolve().parents[1] / 'metrics/stop-replays')))
     directory.mkdir(parents=True, exist_ok=True)

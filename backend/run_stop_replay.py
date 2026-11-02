@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import time
 import numpy as np
 from pathlib import Path
 from engine import _load_runtime
@@ -9,6 +10,12 @@ from stop_replay import load_replay, compare_runs
 from stop_runtime import new_character, candidate_specs, refinement_specs, generate_candidate, diagnose
 from stop_candidate_search import search_candidates
 from stop_test_report import write_report
+
+
+def selected_specification(result):
+    """実際に採用された候補だけを再現対象とする。"""
+    selected = result['selected']
+    return None if selected is None else result['candidates'][selected]['specification']
 
 
 def main():
@@ -34,6 +41,7 @@ def main():
     )
     with engine, wp.ScopedStream(engine.stream):
         for path in paths:
+            started = time.perf_counter()
             replay = load_replay(path)
             specs = candidate_specs()
             result = search_candidates(
@@ -52,15 +60,10 @@ def main():
                     result['selected']=len(result['candidates'])+refined['selected']
                 result['candidates'].extend(refined['candidates'])
                 result['rounds']=2
-            chosen = next(
-                (
-                    r["specification"]
-                    for r in result["candidates"]
-                    if "checks" in r["metrics"]
-                ),
-                None,
-            )
+            chosen = selected_specification(result)
+            result['search_seconds'] = time.perf_counter() - started
             if chosen:
+                repeated_started = time.perf_counter()
                 repeated = [
                     generate_candidate(
                         new_character(rt, engine, pool, replay), replay, chosen, rt
@@ -68,6 +71,7 @@ def main():
                     for _ in range(2)
                 ]
                 result["repeatability"] = compare_runs(*repeated)
+                result['repeat_seconds'] = time.perf_counter() - repeated_started
             result.update(
                 case=path.stem, metrics=dict(accepted=result["selected"] is not None)
             )
