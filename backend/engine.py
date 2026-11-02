@@ -439,7 +439,7 @@ def _drain(commands: Queue, nav: NavState, cycle=None):
             goal = np.array([result.move_to[0], result.move_to[1], 0.0], dtype=np.float32)
             if cycle is not None:
                 cycle.retarget_settings = cmd.get('retarget_settings', {})
-                if cmd.get('stop_mode') in ('visual', 'legacy'):
+                if cmd.get('stop_mode') in ('visual', 'prepared', 'legacy'):
                     cycle.stop_mode = cmd['stop_mode']
                 else:
                     cycle.stop_mode = getattr(cycle, 'default_stop_mode', 'legacy')
@@ -527,11 +527,12 @@ def worker(commands: Queue, publish):
                 return
             nav, moved = drained
             if moved is not None:
-                if cycle.stop_mode == 'visual' and visual_stop_cache is None:
+                if cycle.stop_mode in ('visual', 'prepared') and visual_stop_cache is None:
                     visual_stop_cache = VisualStopRuntime()
-                visual_stop = visual_stop_cache if cycle.stop_mode == 'visual' else None
+                visual_stop = visual_stop_cache if cycle.stop_mode in ('visual', 'prepared') else None
                 if visual_stop:
                     visual_stop.selection = None
+                    visual_stop.prepared = cycle.stop_mode == 'prepared'
                 comparison_start = os.environ.get('MOTIONBRICKS_COMPARISON_REPLAY')
                 if comparison_start and nav.move_id != 2:
                     from stop_replay import load_replay, restore_history
@@ -603,7 +604,7 @@ def worker(commands: Queue, publish):
                     stop_frames, stop_metrics = _begin_final_stop(character, action.pose, cycle.final_stop_goal, rt, wp, destination=cycle.goal, ground=stop_ground, control=dict(**stop_control, phase=cycle.phase, speed_mps=root_speed, stop_prediction_m=cycle.stop_prediction_m, destination=None if cycle.goal is None else cycle.goal.tolist(), contacts=dict(left=cycle.plants.left, right=cycle.plants.right), retarget_settings=getattr(cycle,'retarget_settings',{})))
                 except Exception as exc:
                     _sync_pose(character, pose, wp, seed=True)
-                    stop_frames, stop_metrics = None, dict(accepted=False, stage='generation', reason=f'Final stop generation failed: {exc}')
+                    stop_frames, stop_metrics = None, dict(accepted=False, single_attempt=cycle.stop_mode == 'prepared', stage='generation', reason=f'Final stop generation failed: {exc}')
                 cycle.note_final_stop(stop_frames, stop_metrics)
                 character.movement.reset_desired_velocity()
             elif action.begin_stop_recovery:

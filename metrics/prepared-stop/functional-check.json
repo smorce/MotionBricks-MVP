@@ -1,0 +1,56 @@
+{
+  "errors": [],
+  "results": [
+    {
+      "name": "2m",
+      "phase": "settled",
+      "selection_status": "experimental",
+      "reference": "A-1.000",
+      "start_distance_m": 0.5927975765794052,
+      "arrival_error_m": 2.421438694000244e-8,
+      "human_rating": "unknown",
+      "display": "新実験：停止準備 → F001接続 / 目的地まで 0.00m\n停止済み・接地後にGroundedIdleへ\n未評価のA方式（保存候補は生成条件の参考）\n参照 A-1.000 / F001・足固定なし\n停止開始距離 59cm / 人間の目視評価待ち"
+    },
+    {
+      "name": "1m",
+      "phase": "settled",
+      "selection_status": "experimental",
+      "reference": "A-0.500",
+      "start_distance_m": 0.5815934099702526,
+      "arrival_error_m": 4.656612873077393e-10,
+      "human_rating": "unknown",
+      "display": "新実験：停止準備 → F001接続 / 目的地まで 0.00m\n停止済み・接地後にGroundedIdleへ\n未評価のA方式（保存候補は生成条件の参考）\n参照 A-0.500 / F001・足固定なし\n停止開始距離 58cm / 人間の目視評価待ち"
+    },
+    {
+      "name": "30cm",
+      "phase": "settled",
+      "selection_status": "experimental",
+      "reference": "A-0.300",
+      "start_distance_m": 0.2999999523162842,
+      "arrival_error_m": 4.768371580921027e-8,
+      "human_rating": "unknown",
+      "display": "新実験：停止準備 → F001接続 / 目的地まで 0.00m\n停止済み・接地後にGroundedIdleへ\n未評価のA方式（保存候補は生成条件の参考）\n参照 A-0.300 / F001・足固定なし\n停止開始距離 30cm / 人間の目視評価待ち"
+    },
+    {
+      "name": "50cm",
+      "phase": "settled",
+      "selection_status": "experimental",
+      "reference": "A-0.500",
+      "start_distance_m": 0.5,
+      "arrival_error_m": 0,
+      "human_rating": "unknown",
+      "display": "新実験：停止準備 → F001接続 / 目的地まで 0.00m\n停止済み・接地後にGroundedIdleへ\n未評価のA方式（保存候補は生成条件の参考）\n参照 A-0.500 / F001・足固定なし\n停止開始距離 50cm / 人間の目視評価待ち"
+    },
+    {
+      "name": "turn",
+      "phase": "settled",
+      "selection_status": "experimental",
+      "reference": "A-1.000",
+      "start_distance_m": 0.5898427389841034,
+      "arrival_error_m": 3.91155481338501e-8,
+      "human_rating": "unknown",
+      "display": "新実験：停止準備 → F001接続 / 目的地まで 0.00m\n停止済み・接地後にGroundedIdleへ\n未評価のA方式（保存候補は生成条件の参考）\n参照 A-1.000 / F001・足固定なし\n停止開始距離 59cm / 人間の目視評価待ち"
+    }
+  ],
+  "human_rating": "unknown"
+}

@@ -11,3 +11,7 @@ test('候補とXを表示し新しい生成は評価待ちにする',()=>{
 test('従来方式にX未確認を付けない',()=>{
  assert.equal(formatVisualStop({stop_mode:'legacy'}),'実行方式：従来の停止制御');
 });
+test('新実験の未一致生成を評価済みと表示しない',()=>{
+ const text=formatVisualStop({stop_mode:'prepared',phase:'settled',visual_selection:{status:'experimental',action:'stop',candidate:{id:'A-0.500'},reference_distance_m:.5,target_pose_distance_m:.59}});
+ assert.match(text,/未評価のA方式/);assert.match(text,/目視評価待ち/);
+});

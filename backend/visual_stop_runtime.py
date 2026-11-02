@@ -14,6 +14,7 @@ class VisualStopRuntime:
         self.candidates = load_candidates()
         self.candidates += load_additional_reviews(LAB.parent / 'phase9/human-reviews.json')
         self.selection = None
+        self.prepared = False
 
     def observe(self, character, goal, ground):
         from final_stop import stop_support
@@ -27,14 +28,18 @@ class VisualStopRuntime:
                       support=stop_support(pose, goal, parents, names)))
         state = state_features(replay)
         remaining = float(np.linalg.norm(np.asarray(goal)[:2] - np.asarray(replay['pose'])[0, :2]))
-        self.selection = select_stop(state, remaining, self.candidates)
+        if self.prepared:
+            from prepared_stop_selector import select_prepared_stop
+            self.selection = select_prepared_stop(state, remaining, self.candidates)
+        else:
+            self.selection = select_stop(state, remaining, self.candidates)
         return self.selection
 
     def generate(self, character, goal, ground, rt):
         from quats import RX90, quat_mul, quat_to_mat
         replay = capture_replay(character, goal, ground)
         selection = self.observe(character, goal, ground)
-        if selection['status'] != 'matched' or selection['action'] != 'stop':
+        if selection['status'] not in (('matched', 'experimental') if self.prepared else ('matched',)) or selection['action'] != 'stop':
             raise ValueError('Current stop state is unreviewed')
         idle = character.asset_pool.clip_registry.load(rt['DEFAULT_IDLE_CLIPS'][0]).animation.poses.numpy()[:4].copy()
         for pose in idle:
@@ -44,6 +49,7 @@ class VisualStopRuntime:
         frames = pure_generate(scratch, replay, selection['candidate'], rt, idle)
         error = float(np.linalg.norm(frames[-1][0, :2] - np.asarray(goal)[:2]))
         record = dict(selection=selection, original_destination=np.asarray(goal).tolist(),
+                      experiment='prepared_f001' if self.prepared else 'strict_visual',
                       actual_arrival_error_m=error, generation_settings=selection['candidate']['generation_settings'],
                       human_rating='unknown', notes='', target_adjustment_m=0, animation_scale=1,
                       frames=np.asarray(frames).tolist(), contacts=frames.contacts)

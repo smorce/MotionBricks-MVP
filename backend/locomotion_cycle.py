@@ -202,7 +202,7 @@ class LocomotionCycle:
     def note_final_stop(self, frames, metrics):
         self.final_stop_metrics = metrics
         if frames is None or not metrics.get('accepted'):
-            self.phase = STOP_RETRY if self.stop_retry_count == 0 else STOP_FAILED
+            self.phase = STOP_FAILED if metrics.get('single_attempt') else STOP_RETRY if self.stop_retry_count == 0 else STOP_FAILED
             self.stop_failure_reason = metrics.get('reason', 'Final stop generation failed')
             return
         self.final_stop_frames = frames
@@ -396,7 +396,7 @@ class LocomotionCycle:
         stop_at = self.choice.final_window_m if gait_plan.USE_PROCEDURAL_STEP else max(MICRO_M, self.stop_prediction_m)
         visual = getattr(self, 'visual_selection', None)
         if visual is not None and self.stop_requested_s is None:
-            if visual['status'] == 'matched' and visual['action'] == 'stop':
+            if visual['status'] in ('matched', 'experimental') and visual['action'] == 'stop':
                 self.stop_requested_s = self.clock
                 self.phase = FINAL_STEP
                 action = self._action(pose, pose_out=pose, obs=obs)
