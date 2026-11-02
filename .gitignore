@@ -6,8 +6,43 @@ web/node_modules/
 .env.*
 *.log
 
+# TensorRT engine cache（巨大な .plan を含む）
+.trt-cache/
+
+# 自動探索の途中結果と動画はローカルに保持する。
+metrics/stop-*/
+!metrics/stop-final/
+!metrics/stop-measured/
+metrics/stop-final/*-frames.json
+metrics/probe-frames.npz
+
 # Polyfork: アセットファイル自体の再配布はライセンスで禁止
 ModernRestaurantCafekit/
 
 # キャラクターモデルはローカル配置（server.py がリポジトリ直下を参照）
 /ロゼ.vrm
+
+# 停止距離ラボのレビュー用成果物。展開した全姿勢JSONはZIP内に保存する。
+!metrics/stop-distance-lab/
+metrics/stop-distance-lab/*
+!metrics/stop-distance-lab/summary.json
+!metrics/stop-distance-lab/measurements.zip
+!metrics/stop-distance-lab/navigation.json
+!metrics/stop-distance-lab/reviews.json
+!metrics/stop-distance-lab/selection.json
+!metrics/stop-distance-lab/browser-check.json
+!metrics/stop-distance-lab/front.png
+!metrics/stop-distance-lab/side.png
+!metrics/stop-distance-lab/quarter.png
+!metrics/stop-distance-lab/eight-candidates.png
+!metrics/stop-distance-lab/comparison-image.png
+!metrics/stop-distance-lab/synchronized.webm
+
+# Phase 9の全姿勢はZIPへ格納し、評価と視覚資料は個別に保存する。
+metrics/visual-stop-runs/
+metrics/phase9/*.json
+!metrics/phase9/results.json
+!metrics/phase9/browser-check.json
+!metrics/phase9/review-template.json
+!metrics/phase9/human-reviews.json
+metrics/phase9/page@*.webm

@@ -141,6 +141,8 @@ class LocomotionCycle:
         self.names = default_names()
 
     def begin_move(self, goal_xy, hold_stance: bool, move_id) -> None:
+        # 速度・方向・接地条件を照合できない過去の停止距離は再利用しない。
+        self.last_stop_distance_m = 0.0
         self.goal = np.array([float(goal_xy[0]), float(goal_xy[1]), 0.0], dtype=np.float64)
         self.hold_stance = bool(hold_stance)
         self.move_id = move_id
@@ -355,7 +357,13 @@ class LocomotionCycle:
             frame = self.final_stop_frames[self.final_stop_index]
             self.final_stop_index += 1
             if self.final_stop_index == len(self.final_stop_frames):
-                if np.linalg.norm(frame[0, :2] - self.goal[:2]) <= MICRO_M:
+                if self.final_stop_metrics.get('recovery_only'):
+                    self.phase = STOP_FAILED
+                    self.recovery_pose = frame.copy()
+                    self.stop_failure_reason = 'Safe landing completed without reaching destination'
+                elif self.final_stop_metrics.get('acceptance_basis') == 'experimental_playback_only':
+                    self._settle(frame, 'visual_stop_complete')
+                elif np.linalg.norm(frame[0, :2] - self.goal[:2]) <= MICRO_M:
                     self._settle(frame, 'final_stop_complete')
                 else:
                     self.phase = STOP_RETRY
@@ -369,7 +377,7 @@ class LocomotionCycle:
         if self.phase == COLLECT_PREPARING:
             return self._action(self.settled_pose, pose_out=self.settled_pose, obs=obs)
 
-        if self.mode == "micro" and self.phase != SETTLED:
+        if self.mode == "micro" and self.phase != SETTLED and getattr(self, 'visual_selection', None) is None:
             if self.stop_requested_s is None:
                 self.stop_requested_s = self.clock
                 self.stop_facing = facing.copy()
@@ -386,6 +394,21 @@ class LocomotionCycle:
         predicted = max(self._flight.values()) * max(0.0, float(obs.get("actual_speed") or 0.0))
         self.stop_prediction_m = min(self.choice.final_window_m, max(predicted, self.last_stop_distance_m))
         stop_at = self.choice.final_window_m if gait_plan.USE_PROCEDURAL_STEP else max(MICRO_M, self.stop_prediction_m)
+        visual = getattr(self, 'visual_selection', None)
+        if visual is not None and self.stop_requested_s is None:
+            if visual['status'] == 'matched' and visual['action'] == 'stop':
+                self.stop_requested_s = self.clock
+                self.phase = FINAL_STEP
+                action = self._action(pose, pose_out=pose, obs=obs)
+                action.begin_final_stop = True
+                return action
+            if visual['status'] == 'unknown' and distance <= .15:
+                self.phase = STOP_FAILED
+                self.recovery_pose = pose.copy()
+                self.stop_failure_reason = 'No visually reviewed stop state'
+                return self._action(pose, pose_out=pose, obs=obs)
+            self.mode = 'walk'
+            stop_at = 0
         if self.stop_requested_s is None and self.mode == "walk" and distance > stop_at:
             self.phase = DECELERATING if distance <= DECEL_ZONE_M else MOVING
             prime = not self.walk_primed
@@ -619,6 +642,7 @@ class LocomotionCycle:
         commanded = OFFICIAL_WALK_SPEED_MPS if walk else 0.0
         row = {
             "stop_prediction_m": self.stop_prediction_m,
+            "stop_retry_count": self.stop_retry_count,
             "final_stop_metrics": self.final_stop_metrics,
             "root_x": float(pose[0, 0]),
             "root_y": float(pose[0, 1]),
@@ -666,6 +690,7 @@ class LocomotionCycle:
             "event": self._event,
             "final_stop_metrics": self.final_stop_metrics,
             "stop_prediction_m": row['stop_prediction_m'],
+            "stop_retry_count": self.stop_retry_count,
             "goal_error_m": row['goal_error_m'],
             "stop_root_positions": row['stop_root_positions'],
             "mode": self.travel_mode or self.mode or "",

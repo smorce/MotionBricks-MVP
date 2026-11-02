@@ -7,8 +7,10 @@ from collect_stance import valid_pose, knees_valid, knees_continuous
 
 
 def calibrate_stop_ground(reference, parents, names, floor_z=0.0):
+    from step_cycle import fk
+    _,rotations=fk(reference,parents)
     points = foot_points(reference, parents, names)
-    return dict(floor_z=float(floor_z), offsets={
+    return dict(floor_z=float(floor_z),foot_up_local={side:(rotations[names.index(side.title()+'Foot')].T@np.array([0.,0.,1.])).tolist() for side in ('left','right')}, offsets={
         side: {part: float(point[2] - floor_z) for part, point in feet.items()}
         for side, feet in points.items()})
 
@@ -124,15 +126,20 @@ def check_bone_lengths(frames, original, names, atol_m=.002, rtol=.01):
 
 
 def validate_stop_motion(frames, original, goal, parents, names, ground):
+    contacts = getattr(frames, 'contacts', None)
+    support = getattr(frames, 'support', None)
     frames = np.asarray(frames)
     result = dict(accepted=False, reason='Invalid stop motion')
     if len(frames) < 4 or frames.shape[1:] != original.shape or not all(valid_pose(p) for p in frames):
         return result
     result.update(check_bone_lengths(frames, original, names))
     calibration = ground
-    raw_points = [foot_points(p, parents, names) for p in frames]
+    from step_cycle import fk
+    from stop_diagnostics import points_from_world
+    world=[fk(p,parents) for p in [original,*frames]]
+    raw_points = [points_from_world(positions,names) for positions,_ in world[1:]]
     points = [contact_points(p, calibration) for p in raw_points]
-    start = contact_points(foot_points(original, parents, names), calibration)
+    start = contact_points(points_from_world(world[0][0],names), calibration)
     ground = calibration['floor_z']
     result['ground_world_z'] = ground
     penetration = next(((i, side, part) for i, p in enumerate(points)
@@ -151,13 +158,13 @@ def validate_stop_motion(frames, original, goal, parents, names, ground):
         result['reason'] = 'Stop missed destination'
     elif any(np.linalg.norm(b[0, :3]-a[0, :3]) > .06 for a, b in zip([original, *frames[:-1]], frames)):
         result['reason'] = 'Stop root discontinuity'
-    elif any(not knees_valid(p, parents, names) or not knees_continuous(p, original, parents, names) for p in frames):
+    elif any(not knees_valid(p, parents, names,positions=world[i+1][0]) or not knees_continuous(p, original, parents, names,current=world[i+1][0],initial=world[0][0]) for i,p in enumerate(frames)):
         result['reason'] = 'Invalid stop knee bend'
     elif not result['bone_lengths_valid']:
         result['reason'] = 'Stop bone lengths changed'
     elif penetration is not None:
         result['reason'] = 'Stop foot penetrated ground'
-    elif any(np.linalg.norm(b[s][part][:2]-a[s][part][:2]) > .02
+    elif contacts is None and any(np.linalg.norm(b[s][part][:2]-a[s][part][:2]) > .02
              for a,b in zip([start,*points[:-1]],points) for s in ('left','right') for part in ('ankle','toe')
              if a[s][part][2] <= ground+.02 and b[s][part][2] <= ground+.02):
         result['reason'] = 'Stop planted foot slid'
@@ -169,4 +176,21 @@ def validate_stop_motion(frames, original, goal, parents, names, ground):
         result['reason'] = 'Stop final feet are unstable'
     else:
         result.update(accepted=True, reason='')
+    from stop_diagnostics import diagnose_stop
+    result['checks'] = diagnose_stop(frames, original, goal, parents, names, calibration, result,
+                                     contacts=contacts, support=support,world=world)
+    result['failures'] = [name for name, check in result['checks'].items() if not check['passed']]
+    checks=result['checks']
+    knee_angles=np.asarray([[row['left'],row['right']] for row in checks['knees']['angles_deg']])
+    result['quality']=dict(arrival_error_m=checks['destination']['error_m'],
+        support_slide_m=checks['support']['max_slip_m'],
+        swing_clearance_m=max(checks['swing']['lift_m'].values()),
+        knee_angle_step_deg=float(np.max(np.abs(np.diff(knee_angles,axis=0)))),
+        root_second_difference_m=checks['root']['max_second_difference_m'],
+        final_stance_m=checks['idle']['stance_m'],
+        terminal_stable=checks['idle']['passed'])
+    if result['failures']:
+        result['accepted'] = False
+        if not result['reason']:
+            result['reason'] = 'Stop diagnostic failed: ' + ', '.join(result['failures'])
     return result

@@ -1,0 +1,225 @@
+{
+  "source_state_id": "2b49986f84af6270f71274cb57cd9210de50deec3575d690ac7a0b2d6cba994d",
+  "exported_at": "2026-11-02T05:30:32.621Z",
+  "reviews": [
+    {
+      "id": "A-0.150",
+      "mark": "good",
+      "at_seconds": 0.5996999999999574,
+      "notes": ""
+    },
+    {
+      "id": "B-0.150",
+      "mark": "bad",
+      "at_seconds": 1.4162999999999994,
+      "notes": ""
+    },
+    {
+      "id": "C-0.150",
+      "mark": "bad",
+      "at_seconds": 0.7330999999999817,
+      "notes": ""
+    },
+    {
+      "id": "D-0.150",
+      "mark": "bad",
+      "at_seconds": 1.4162999999999997,
+      "notes": ""
+    },
+    {
+      "id": "A-0.200",
+      "mark": "good",
+      "at_seconds": 0.9662999999999403,
+      "notes": ""
+    },
+    {
+      "id": "B-0.200",
+      "mark": "bad",
+      "at_seconds": 0.2662999999999416,
+      "notes": ""
+    },
+    {
+      "id": "C-0.200",
+      "mark": "bad",
+      "at_seconds": 0.29940000000004413,
+      "notes": "Idelに移行するときに足が不自然にスライドして開く"
+    },
+    {
+      "id": "D-0.200",
+      "mark": "bad",
+      "at_seconds": 0.6662999999999425,
+      "notes": ""
+    },
+    {
+      "id": "A-0.300",
+      "mark": "bad",
+      "at_seconds": 1.6318999999999555,
+      "notes": "最後に足が横に不自然にスライドして開きます"
+    },
+    {
+      "id": "B-0.300",
+      "mark": "bad",
+      "at_seconds": 0.06560000000013706,
+      "notes": ""
+    },
+    {
+      "id": "C-0.300",
+      "mark": "bad",
+      "at_seconds": 0.732199999999997,
+      "notes": ""
+    },
+    {
+      "id": "D-0.300",
+      "mark": "bad",
+      "at_seconds": 1.4990000000000443,
+      "notes": ""
+    },
+    {
+      "id": "A-0.400",
+      "mark": "bad",
+      "at_seconds": 1.1820000000000492,
+      "notes": ""
+    },
+    {
+      "id": "B-0.400",
+      "mark": "bad",
+      "at_seconds": 0.36550000000005006,
+      "notes": ""
+    },
+    {
+      "id": "C-0.400",
+      "mark": "bad",
+      "at_seconds": 1.2655000000000496,
+      "notes": ""
+    },
+    {
+      "id": "D-0.400",
+      "mark": "bad",
+      "at_seconds": 0.4822000000000037,
+      "notes": ""
+    },
+    {
+      "id": "A-0.500",
+      "mark": "bad",
+      "at_seconds": 0.8829999999999892,
+      "notes": ""
+    },
+    {
+      "id": "B-0.500",
+      "mark": "bad",
+      "at_seconds": 1.33299999999999,
+      "notes": ""
+    },
+    {
+      "id": "C-0.500",
+      "mark": "bad",
+      "at_seconds": 1.3328999999999827,
+      "notes": ""
+    },
+    {
+      "id": "D-0.500",
+      "mark": "bad",
+      "at_seconds": 0.44969999999998667,
+      "notes": ""
+    },
+    {
+      "id": "A-0.600",
+      "mark": "good",
+      "at_seconds": 1.5324999999999873,
+      "notes": ""
+    },
+    {
+      "id": "B-0.600",
+      "mark": "bad",
+      "at_seconds": 0.5490999999999935,
+      "notes": ""
+    },
+    {
+      "id": "C-0.600",
+      "mark": "bad",
+      "at_seconds": 1.4823999999999815,
+      "notes": ""
+    },
+    {
+      "id": "D-0.600",
+      "mark": "bad",
+      "at_seconds": 0.865699999999999,
+      "notes": ""
+    },
+    {
+      "id": "A-0.800",
+      "mark": "good",
+      "at_seconds": 1.061475000000024,
+      "notes": ""
+    },
+    {
+      "id": "B-0.800",
+      "mark": "bad",
+      "at_seconds": 0.14487500000004805,
+      "notes": ""
+    },
+    {
+      "id": "C-0.800",
+      "mark": "good",
+      "at_seconds": 1.4114750000000225,
+      "notes": ""
+    },
+    {
+      "id": "D-0.800",
+      "mark": "bad",
+      "at_seconds": 1.0445750000000014,
+      "notes": ""
+    },
+    {
+      "id": "A-1.000",
+      "mark": "good",
+      "at_seconds": 0.5329000000000461,
+      "notes": ""
+    },
+    {
+      "id": "B-1.000",
+      "mark": "bad",
+      "at_seconds": 0.9996000000001165,
+      "notes": ""
+    },
+    {
+      "id": "C-1.000",
+      "mark": "bad",
+      "at_seconds": 0.18290000000004694,
+      "notes": ""
+    },
+    {
+      "id": "D-1.000",
+      "mark": "bad",
+      "at_seconds": 1.2829000000000474,
+      "notes": ""
+    },
+    {
+      "id": "A-1.200",
+      "mark": "bad",
+      "at_seconds": 1.2998000000000038,
+      "notes": ""
+    },
+    {
+      "id": "B-1.200",
+      "mark": "bad",
+      "at_seconds": 0.8997000000000053,
+      "notes": ""
+    },
+    {
+      "id": "C-1.200",
+      "mark": "bad",
+      "at_seconds": 0.01640000000000197,
+      "notes": ""
+    },
+    {
+      "id": "D-1.200",
+      "mark": "bad",
+      "at_seconds": 0.7830000000000004,
+      "notes": ""
+    }
+  ],
+  "next_offset": 36,
+  "next_ids": [],
+  "selection_policy": "human_visual_priority"
+}

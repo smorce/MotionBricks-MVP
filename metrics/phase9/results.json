@@ -1,0 +1,90 @@
+[
+  {
+    "scenario": "30cm",
+    "x_m": null,
+    "legacy_phase": "settled",
+    "visual_phase": "stop_failed",
+    "legacy_error_m": 1.788139347702611e-08,
+    "visual_error_m": 0.1495302959599891,
+    "human_rating": "unknown",
+    "same_initial_pose": true,
+    "same_destination": true
+  },
+  {
+    "scenario": "30cm-50cm",
+    "x_m": null,
+    "legacy_phase": "settled",
+    "visual_phase": "stop_failed",
+    "legacy_error_m": 4.1723251298364517e-08,
+    "visual_error_m": 0.12417862371958137,
+    "human_rating": "unknown",
+    "same_initial_pose": false,
+    "same_destination": true
+  },
+  {
+    "scenario": "50cm",
+    "x_m": 0.5,
+    "legacy_phase": "stop_failed",
+    "visual_phase": "settled",
+    "legacy_error_m": 0.10503793847416862,
+    "visual_error_m": 2.9802322387695312e-08,
+    "human_rating": "unknown",
+    "same_initial_pose": true,
+    "same_destination": true
+  },
+  {
+    "scenario": "1m",
+    "x_m": 1.0,
+    "legacy_phase": "settled",
+    "visual_phase": "settled",
+    "legacy_error_m": 2.9802322387695312e-08,
+    "visual_error_m": 2.9802322387695312e-08,
+    "human_rating": "unknown",
+    "same_initial_pose": true,
+    "same_destination": true
+  },
+  {
+    "scenario": "2m",
+    "x_m": 0.6,
+    "legacy_phase": "settled",
+    "visual_phase": "settled",
+    "legacy_error_m": 8.940696716308594e-08,
+    "visual_error_m": 8.940696716308594e-08,
+    "human_rating": "unknown",
+    "same_initial_pose": true,
+    "same_destination": true
+  },
+  {
+    "scenario": "5m",
+    "x_m": 0.5,
+    "legacy_phase": "settled",
+    "visual_phase": "settled",
+    "legacy_error_m": 8.940696716308594e-08,
+    "visual_error_m": 8.940696716308594e-08,
+    "human_rating": "unknown",
+    "same_initial_pose": true,
+    "same_destination": true
+  },
+  {
+    "scenario": "90-turn",
+    "x_m": 0.5,
+    "legacy_phase": "settled",
+    "visual_phase": "settled",
+    "legacy_error_m": 3.72212683186315e-07,
+    "visual_error_m": 3.72212683186315e-07,
+    "human_rating": "unknown",
+    "same_initial_pose": true,
+    "same_destination": true
+  },
+  {
+    "scenario": "idle-restart",
+    "x_m": null,
+    "legacy_phase": "stop_failed",
+    "visual_phase": "stop_failed",
+    "legacy_error_m": 0.032525291082019445,
+    "visual_error_m": 0.12851553464748125,
+    "human_rating": "unknown",
+    "same_initial_pose": true,
+    "same_destination": true
+  }
+]

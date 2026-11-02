@@ -26,6 +26,9 @@
   <div id="background"></div>
   <div id="toolbar">
     <b>紅璃ロゼ — MotionBricks MVP</b>
+    <label for="stopMode">停止制御（次のクリックから適用）</label>
+    <select id="stopMode"><option value="visual" selected>目視で自然だった11候補（実験）</option><option value="legacy">従来の停止制御</option></select>
+    <p style="font-size:12px;white-space:pre-wrap;color:#bde0d2" id="visualStopStatus">目視11候補を使用します。A方式：F001目標・足固定なし。</p>
     <div id="stance">
       <label for="legAdduct">足の閉じ具合 <output id="legAdductOut">0.0°</output></label>
       <input id="legAdduct" type="range" min="0" max="24" step="0.5" value="0">

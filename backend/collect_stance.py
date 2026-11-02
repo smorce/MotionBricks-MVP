@@ -1,7 +1,7 @@
 ﻿"""収束目標と、表示前のモーション品質検証。独自 IK は使用しない。"""
 import numpy as np
 from soma_pose import overlay_pose
-from quats import quat_mul
+from quats import quat_mul, quat_to_mat
 from step_cycle import foot_points, facing_of, fk
 from soma_skeleton import SOMA_JOINT_NAMES, soma_parents
 
@@ -28,8 +28,9 @@ def valid_pose(pose):
             and np.allclose(np.linalg.norm(pose[:, 3:], axis=1), 1, atol=.01))
 
 
-def knees_valid(pose, parents, names):
-    positions, _ = fk(pose, parents)
+def knees_valid(pose, parents, names, *, positions=None):
+    if positions is None:
+        positions, _ = fk(pose, parents)
     for side in ('Left', 'Right'):
         hip, knee, ankle = [positions[names.index(side + part)] for part in ('Leg', 'Shin', 'Foot')]
         upper, lower = knee - hip, ankle - knee
@@ -39,9 +40,11 @@ def knees_valid(pose, parents, names):
     return True
 
 
-def knees_continuous(pose, original, parents, names):
-    current, _ = fk(pose, parents)
-    initial, _ = fk(original, parents)
+def knees_continuous(pose, original, parents, names, *, current=None, initial=None):
+    if current is None:
+        current, _ = fk(pose, parents)
+    if initial is None:
+        initial, _ = fk(original, parents)
     for side in ('Left', 'Right'):
         def bend(points):
             hip, knee, ankle = [points[names.index(side + part)] for part in ('Leg', 'Shin', 'Foot')]
@@ -50,7 +53,9 @@ def knees_continuous(pose, original, parents, names):
                 return np.zeros(3)
             offset = knee - hip
             return offset - axis * np.dot(offset, axis) / np.dot(axis, axis)
-        a, b = bend(initial), bend(current)
+        # 旋回でワールド上の方向が反転しても、身体内の曲がりは維持される。
+        a = quat_to_mat(original[0, 3:]).T @ bend(initial)
+        b = quat_to_mat(pose[0, 3:]).T @ bend(current)
         if np.linalg.norm(a) > .01 and np.linalg.norm(b) > .01 and np.dot(a, b) < 0:
             return False
     return True

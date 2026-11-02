@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>ロゼ・停止距離ラボ | 同期比較</title>
+<style>
+:root{color-scheme:dark;--bg:#101521;--panel:#192233;--edge:#33435c;--text:#f3f7ff;--muted:#a3b5cd;--accent:#79d9c0;--bad:#fc9a96}
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,"Noto Sans JP",sans-serif;background:var(--bg);color:var(--text)}
+header{padding:19px 23px 10px;background:#151d2b;border-bottom:1px solid var(--edge)}h1{font-size:23px;margin:0 0 6px}p{color:var(--muted);line-height:1.5;margin:8px 0}button,input,select{font:inherit}button,.file{border:1px solid var(--edge);border-radius:8px;background:#29384d;color:white;padding:8px 11px;cursor:pointer}button:hover{background:#394b65}button:disabled{opacity:.5;cursor:not-allowed}input[type=file]{max-width:255px}input[type=range]{accent-color:var(--accent);vertical-align:middle}
+.controls{display:flex;gap:12px 19px;align-items:center;flex-wrap:wrap;padding:14px 22px;background:#141c2a;border-bottom:1px solid var(--edge)}.controls label{font-size:13px;display:flex;gap:7px;align-items:center}.controls .divider{height:26px;border-left:1px solid #42516a}.status{padding:8px 22px;color:var(--muted);font-size:12px;background:#111927;white-space:pre-wrap}.status.error{color:var(--bad)}
+.grid{padding:16px;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}.card{background:var(--panel);border:1px solid var(--edge);border-radius:13px;overflow:hidden;min-width:0}.card[data-mark="bad"]{border:2px solid var(--bad)}.card[data-mark="good"]{border:2px solid var(--accent)}.cardhead{display:flex;justify-content:space-between;gap:10px;padding:12px 14px 6px;align-items:start}.name{font-size:15px;font-weight:700}.detail{color:var(--muted);font-size:12px;line-height:1.5}.pill{font-size:11px;padding:4px 7px;border-radius:5px;background:#303d52;white-space:nowrap}.pill.good{background:#184d3d;color:#a8f7d8}.pill.bad{background:#622f33;color:#ffc6c0}canvas{display:block;width:100%;height:360px;background:linear-gradient(#263650,#172234)}.stats{padding:9px 14px;font-size:12px;display:grid;grid-template-columns:1fr 1fr;gap:4px 10px}.stats strong{font-variant-numeric:tabular-nums}.review{display:flex;gap:5px;padding:6px 12px 12px;flex-wrap:wrap}.review button{padding:5px 9px;font-size:12px}.review input{flex:1;min-width:120px;border:1px solid var(--edge);border-radius:6px;padding:6px;background:#0e1827;color:white}.footer{padding:0 22px 24px;font-size:12px;color:var(--muted)}#time{min-width:155px;width:clamp(150px,20vw,360px)}
+@media(max-width:1100px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:700px){.grid{padding:9px;grid-template-columns:1fr}.controls{padding:10px}canvas{height:240px}}
+</style>
+</head>
+<body>
+<header>
+  <h1>ロゼ・停止距離ラボ <span style="font-size:13px;color:#79d9c0">同期モーション比較</span></h1>
+  <p>同じ歩行履歴から生成した複数の停止候補を、実際のロゼVRMで同時再生します。実験モードの新しい生成結果は、人間による自然さの評価待ちです。</p>
+</header>
+<div class="controls">
+  <label>移動条件 <select id="scenario"><option value="all">全候補</option></select></label>
+  <label>確認時点 <select id="moment"><option value="">時間を選択</option><option value="stop_start">停止開始</option><option value="last_step">最後の一歩（確認候補）</option><option value="landing">着地（確認候補）</option><option value="stopped">停止直後</option><option value="after_one_second">停止1秒後</option><option value="idle">Idle移行</option></select></label>
+  <label>ロゼのVRM <input id="vrmFile" type="file" accept=".vrm" /></label>
+  <label>比較データ <input id="manifestFile" type="file" accept="application/json,.json" /></label>
+  <span class="divider"></span>
+  <button id="play" disabled>▶ 再生</button>
+  <label>時間 <input type="range" id="time" min="0" max="1" step="0.001" value="0" disabled /><output id="timeText">0.00秒</output></label>
+  <label>速度 <select id="rate"><option value="0.25">0.25倍</option><option value="0.5">0.5倍</option><option value="1" selected>1倍</option><option value="1.5">1.5倍</option></select></label>
+  <label>視点 <select id="view"><option value="front">正面</option><option value="side">側面</option><option value="quarter" selected>斜め45°</option></select></label>
+  <label><input id="loop" type="checkbox" checked />ループ</label>
+  <label>表示 <select id="count"><option value="2">左右比較</option><option value="4" selected>4候補</option><option value="6">6候補</option><option value="8">8候補</option><option value="1000">全候補</option></select></label>
+  <label>開始候補 <input id="offset" type="number" min="0" value="0" style="width:65px"></label><button id="shot" disabled>比較画像を保存</button>
+  <button id="export" disabled>目視評価を保存</button>
+</div>
+<div class="status" id="status">初めにロゼ.vrmと、stop_distance_comparison.jsonを選んでください。データはブラウザ内で処理します。</div>
+<main class="grid" id="grid"></main>
+<div class="footer">注意：SOMA骨格の接地情報はロゼの靴底接触そのものではありません。動画や連続フレームで足滑りを確認してください。異なる候補の最終時刻は異なるため、同期再生では短い候補は最終姿勢を保持します。</div>
+<script type="module">
+import * as THREE from 'three';
+import {stanceData,adductUpperLegs,abductUpperArms,pointFeetForward} from './src/stance.js';
+import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
+import {VRMLoaderPlugin,VRMUtils} from '@pixiv/three-vrm';
+
+const $=id=>document.getElementById(id);
+const controls={play:$('play'),time:$('time'),timeText:$('timeText'),rate:$('rate'),view:$('view'),loop:$('loop'),count:$('count'),shot:$('shot'),export:$('export')};
+import {MAP,basis,basisInv,q as sourceQuat,calcWorldQuats as worldQuats,applySomaRotations} from './src/somaRetarget.js';
+function lerpPose(a,b,w){const out=[];for(let i=0;i<a.length;i++){const v=a[i].slice();for(let k=0;k<3;k++)v[k]+=(b[i][k]-v[k])*w;const qa=sourceQuat(a[i]),qb=sourceQuat(b[i]);if(qa.dot(qb)<0)qb.set(-qb.x,-qb.y,-qb.z,-qb.w);qa.slerp(qb,w);for(let k=0;k<4;k++)v[3+k]=qa.toArray()[k];out.push(v)}return out}
+function validManifest(data){
+ if(data?.schema_version!==1||!data?.rig||!Array.isArray(data.candidates)||data.candidates.length===0)throw Error('Expected schema_version=1, rig and nonempty candidates');
+ const r=data.rig; if(!Array.isArray(r.rest)||!Array.isArray(r.parents)||!Array.isArray(r.joint_names)||r.rest.length<20||r.rest.length!==r.parents.length||r.rest.length!==r.joint_names.length)throw Error('Invalid rig skeleton');
+ for(const c of data.candidates){const frames=c.frames;if(!Array.isArray(frames)||frames.length<2||!frames.every(f=>Array.isArray(f)&&f.length===r.rest.length))throw Error(`Invalid poses for candidate ${c.id}`);if(!(c.fps>0&&c.fps<=240))throw Error(`Invalid fps for candidate ${c.id}`);if(!Number.isFinite(frames[0][0][0])||frames[0][0].length!==7)throw Error(`Invalid root for candidate ${c.id}`)}
+ return data;
+}
+let data=null,vrmFile=null,cards=[],elapsed=0,maxTime=1,playing=false,lastTick=performance.now(),loadGeneration=0;
+const reviewed=new Map();
+let allCandidates=[];
+$('moment').addEventListener('change',()=>{const event=data?.candidates.find(c=>c.events)?.events?.[$('moment').value];if(event==null){status('この時点は未記録です。自然さを判定せず、追加の実動作確認が必要です。');return}elapsed=event;playing=false;controls.time.value=String(elapsed);status('確認時点: '+$('moment').selectedOptions[0].text+' / '+elapsed.toFixed(2)+'秒')});
+function persistReviews(){if(data)localStorage.setItem('roze.visualReview.'+data.source_state_id,JSON.stringify([...reviewed]))}
+$('grid').addEventListener('input',persistReviews);$('grid').addEventListener('click',persistReviews);
+$('scenario').addEventListener('change',async()=>{data.candidates=allCandidates.filter(c=>$('scenario').value==='all'||c.scenario===$('scenario').value);$('offset').value='0';controls.count.value='2';await rebuild()});
+function configureScenarios(){for(const [id,value] of JSON.parse(localStorage.getItem('roze.visualReview.'+data.source_state_id)||'[]'))reviewed.set(id,value);allCandidates=data.candidates;$('scenario').replaceChildren(new Option('全候補','all'));for(const name of new Set(allCandidates.map(c=>c.scenario).filter(Boolean)))$('scenario').add(new Option(name,name));if(allCandidates.some(c=>c.scenario)){controls.count.value='2';$('grid').style.gridTemplateColumns='repeat(2,minmax(0,1fr))'}}
+function status(s,err=false){$('status').textContent=s;$('status').classList.toggle('error',err)}
+function clearCards(){cards.forEach(c=>{c.renderer.dispose();if(c.vrm)VRMUtils.deepDispose(c.vrm.scene);c.container.remove()});cards=[];$('grid').replaceChildren();}
+function makeCard(item,index){
+ const container=document.createElement('section');container.className='card';container.dataset.id=item.id??String(index);
+ const name=document.createElement('div');name.className='cardhead';const label=document.createElement('div');
+ const heading=document.createElement('div');heading.className='name';heading.textContent=item.label||item.id||`候補${index+1}`;
+ const human=document.createElement('div');human.className='detail';human.textContent='目視：'+(reviewed.get(container.dataset.id)?.mark||'未確認');label.append(human);const description=document.createElement('div');description.className='detail';description.textContent=`目標 ${formatNum(item.target_distance_m)}m / ${item.target_pose_type||'—'} / 支持 ${item.support||'—'} / 固定 ${item.ik_pin_mask||'なし'} / 停止 ${formatNum(item.metrics?.stop_time_seconds)}秒 / 着地 L:${(item.metrics?.landing_times_seconds?.left||[]).map(t=>t.toFixed(2)).join(',')} R:${(item.metrics?.landing_times_seconds?.right||[]).map(t=>t.toFixed(2)).join(',')}`;
+ label.append(heading,description);const badge=document.createElement('span');badge.className='pill';
+ badge.textContent=item.metrics?.accepted===true?'自動検証 合格':item.metrics?.accepted===false?'自動検証 不合格':'自動検証 未計測';badge.title=item.metrics?.reason||'';badge.classList.toggle('good',item.metrics?.accepted===true);badge.classList.toggle('bad',item.metrics?.accepted===false);name.append(label,badge);
+ const host=document.createElement('div');host.style.height='360px';
+ const stats=document.createElement('div');stats.className='stats';
+ const fields=[['現在の変位','travel'],['総移動距離','total'],['目標との誤差','error'],['接地足の滑り','slide'],['生成時間','seconds']];
+ const vals={};for(const [t,k]of fields){const row=document.createElement('div');row.textContent=t;const b=document.createElement('strong');b.textContent='—';stats.append(row,b);vals[k]=b;}
+ vals.total.textContent=formatNum(item.metrics?.actual_travel_m)+'m';vals.error.textContent=formatNum(item.metrics?.arrival_error_m)+'m';vals.slide.textContent=formatNum(item.metrics?.quality?.support_slide_m??item.metrics?.support_drift_max_m)+'m';vals.seconds.textContent=formatNum(item.metrics?.generation_seconds,2)+'秒';
+ const review=document.createElement('div');review.className='review';const notes=document.createElement('input');notes.placeholder='崩れたフレーム・理由のメモ';notes.value=reviewed.get(container.dataset.id)?.notes||'';notes.addEventListener('input',()=>{const old=reviewed.get(container.dataset.id)||{};reviewed.set(container.dataset.id,{...old,at_seconds:elapsed,notes:notes.value})});
+ for(const [textValue,mark]of[['◎ 自然','good'],['× 崩れ','bad'],['? 未確認','unknown']]){const b=document.createElement('button');b.textContent=textValue;b.onclick=()=>{const old=reviewed.get(container.dataset.id)||{};reviewed.set(container.dataset.id,{...old,mark,at_seconds:elapsed,notes:notes.value});container.dataset.mark=mark;human.textContent='目視：'+textValue;status(`${container.dataset.id}: ${textValue} を記録しました（${elapsed.toFixed(2)}秒）`)};review.append(b)}review.append(notes);
+ container.append(name,host,stats,review);$('grid').append(container);container.dataset.mark=reviewed.get(container.dataset.id)?.mark||'unknown';
+ const scene=new THREE.Scene();scene.background=new THREE.Color('#202d41');const amb=new THREE.HemisphereLight(0xffffff,0x596b7a,2);scene.add(amb);const key=new THREE.DirectionalLight(0xffffff,2);key.position.set(-2,6,3);scene.add(key);
+ const grid=new THREE.GridHelper(14,28,'#5f748e','#364459');grid.position.y=.001;scene.add(grid);const floor=new THREE.Mesh(new THREE.PlaneGeometry(20,20),new THREE.MeshStandardMaterial({color:'#263445',roughness:1}));floor.rotation.x=-Math.PI/2;floor.position.y=-.025;scene.add(floor);
+ const renderer=new THREE.WebGLRenderer({antialias:true,preserveDrawingBuffer:true});renderer.setPixelRatio(Math.min(window.devicePixelRatio,1.5));renderer.outputColorSpace=THREE.SRGBColorSpace;host.append(renderer.domElement);
+ const camera=new THREE.OrthographicCamera(-2.4,2.4,1.7,-1.7,.1,70);camera.position.set(2.6,1.7,3.4);camera.lookAt(0,1,0);
+ const marker=new THREE.Mesh(new THREE.RingGeometry(.065,.09,28),new THREE.MeshBasicMaterial({color:'#a7f1c2',side:THREE.DoubleSide}));marker.rotation.x=-Math.PI/2;marker.position.y=.02;marker.visible=false;scene.add(marker);
+ return {container,host,item,scene,camera,renderer,vrm:null,marker,values:vals,restDest:new Map(),restSource:worldQuats(data.rig.rest,data.rig.parents),firstRoot:item.frames[0][0].slice(),rootHeading:null,initialFacing:null};
+}
+function formatNum(n,digits=3){return Number.isFinite(n)?Number(n).toFixed(digits):'—'}
+async function initCard(card,objectUrl,token){
+ const loader=new GLTFLoader();loader.register(parser=>new VRMLoaderPlugin(parser));const gltf=await loader.loadAsync(objectUrl);if(token!==loadGeneration)return;
+ const vrm=gltf.userData.vrm;if(!vrm)throw Error('VRM model was not found in file');VRMUtils.rotateVRM0(vrm);vrm.scene.updateMatrixWorld(true);
+ for(const bone of new Set(Object.values(MAP))){const node=vrm.humanoid.getNormalizedBoneNode(bone);if(node)card.restDest.set(bone,node.getWorldQuaternion(new THREE.Quaternion()))}
+ card.vrm=vrm;card.scene.add(vrm.scene);const first=card.item.frames[0];const direction=data.context?.direction;const q=sourceQuat(first[0]);card.rootHeading=basis.clone().multiply(q).multiply(basisInv);
+ const forward=new THREE.Vector3(0,0,1).applyQuaternion(card.rootHeading);forward.y=0;forward.normalize();card.initialFacing=direction?new THREE.Vector3(direction[0],0,-direction[1]).normalize():forward;
+ const initial=first[0];const goal=card.item.goal_xy;
+ if(Array.isArray(goal)&&goal.length>=2){card.marker.position.set(goal[0]-initial[0],.012,-(goal[1]-initial[1]));card.marker.visible=true}
+ apply(card,0);setView(card);resizeCard(card);
+}
+function setView(card){const l=card.vrm?.humanoid.getNormalizedBoneNode('leftUpperArm'),r=card.vrm?.humanoid.getNormalizedBoneNode('rightUpperArm');const across=l&&r?r.getWorldPosition(new THREE.Vector3()).sub(l.getWorldPosition(new THREE.Vector3())):new THREE.Vector3(-1,0,0);const facing=new THREE.Vector3(0,1,0).cross(across).normalize();const right=new THREE.Vector3(facing.z,0,-facing.x);const viewpoint=controls.view.value;const dir=viewpoint==='front'?facing:viewpoint==='side'?right:facing.clone().add(right).normalize();card.camera.position.copy(dir.multiplyScalar(3.9).add(new THREE.Vector3(0,1.9,0)));card.camera.lookAt(0,1.05,0);card.camera.updateProjectionMatrix();card.cameraBase=card.camera.position.clone()}
+function resizeCard(card){const w=Math.max(100,card.host.clientWidth),h=Math.max(120,card.host.clientHeight);card.renderer.setSize(w,h,false);card.camera.left=-1.25*w/h;card.camera.right=1.25*w/h;card.camera.top=1.25;card.camera.bottom=-1.25;card.camera.updateProjectionMatrix()}
+function apply(card,t){const {item,vrm}=card;if(!vrm)return;const pos=Math.max(0,Math.min(item.frames.length-1,t*item.fps)),ix=Math.floor(pos),next=Math.min(ix+1,item.frames.length-1),w=pos-ix,pose=ix===next?item.frames[ix]:lerpPose(item.frames[ix],item.frames[next],w);
+ const start=card.firstRoot;vrm.scene.position.set(pose[0][0]-start[0],pose[0][2]-data.rig.rest[0][2],-(pose[0][1]-start[1]));vrm.scene.updateMatrixWorld(true);
+ if(card.cameraBase){const shift=new THREE.Vector3(pose[0][0]-start[0],0,-(pose[0][1]-start[1]));card.camera.position.copy(card.cameraBase).add(shift);card.camera.lookAt(shift.x,1.05,shift.z)}
+ applySomaRotations(vrm,data.rig,pose,card.restSource,card.restDest);
+ const saved=JSON.parse(localStorage.getItem('roze.stanceAdjust')||'{}');const stance=stanceData({legDeg:saved.leg_adduct_deg,armDeg:saved.arm_abduct_deg,toeDeg:saved.toe_forward_deg});for(const [left,right,fn,value] of [['leftUpperLeg','rightUpperLeg',adductUpperLegs,stance.leg_adduct_deg],['leftUpperArm','rightUpperArm',abductUpperArms,stance.arm_abduct_deg],['leftFoot','rightFoot',pointFeetForward,stance.toe_forward_deg]]){const l=vrm.humanoid.getNormalizedBoneNode(left),r=vrm.humanoid.getNormalizedBoneNode(right);if(l&&r)fn(l.quaternion,r.quaternion,THREE.MathUtils.degToRad(value));}vrm.update(0);card.values.travel.textContent=formatNum(Math.hypot(pose[0][0]-start[0],pose[0][1]-start[1]))+'m';
+}
+async function rebuild(){if(!data||!vrmFile)return;if(Number($('offset').value)>=data.candidates.length)$('offset').value='0';const token=++loadGeneration;playing=false;controls.play.textContent='▶ 再生';clearCards();const shown=data.candidates.slice(Number($('offset').value),Number($('offset').value)+Number(controls.count.value));cards=shown.map(makeCard);status(`${shown.length}体のロゼを読み込み中…`);
+ const objectUrl=URL.createObjectURL(vrmFile);try{for(const card of cards){await initCard(card,objectUrl,token);if(token!==loadGeneration)return}}catch(e){status(`読み込み失敗: ${e.message}`,true);return}finally{URL.revokeObjectURL(objectUrl)}
+ elapsed=0;maxTime=Math.max(...shown.map(c=>(c.frames.length-1)/c.fps));controls.time.max=String(maxTime);controls.time.value='0';for(const card of cards)apply(card,elapsed);controls.play.disabled=controls.time.disabled=controls.shot.disabled=controls.export.disabled=false;status(`${shown.length}候補を表示しました。全候補は同一時間で再生します。自動検証不合格も比較のため表示できます。`)}
+$('vrmFile').addEventListener('change',async e=>{vrmFile=e.target.files?.[0]||null;await rebuild()});
+$('manifestFile').addEventListener('change',async e=>{try{data=validManifest(JSON.parse(await e.target.files[0].text()));reviewed.clear();configureScenarios();await rebuild()}catch(err){status(`比較データ読み込み失敗: ${err.message}`,true)}});
+$('offset').addEventListener('change',rebuild);controls.count.addEventListener('change',rebuild);controls.view.addEventListener('change',()=>cards.forEach(setView));
+controls.play.addEventListener('click',()=>{playing=!playing;controls.play.textContent=playing?'⏸ 一時停止':'▶ 再生'});
+controls.time.addEventListener('input',()=>{elapsed=Number(controls.time.value);playing=false;controls.play.textContent='▶ 再生'});
+function download(name,blob){const a=document.createElement('a'),url=URL.createObjectURL(blob);a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}
+controls.export.addEventListener('click',()=>{const result={schema_version:1,source_state_id:data.source_state_id||null,exported_at:new Date().toISOString(),reviews:allCandidates.map(c=>({id:c.id,mark:reviewed.get(c.id)?.mark||'unknown',at_seconds:reviewed.get(c.id)?.at_seconds??null,notes:reviewed.get(c.id)?.notes||'',metrics:c.metrics||{},learning_context:c.learning_context||null}))};download('roze-stop-review.json',new Blob([JSON.stringify(result,null,2)],{type:'application/json'}))});
+controls.shot.addEventListener('click',()=>{const columns=Math.min(cards.length,4),W=600,H=405,rows=Math.ceil(cards.length/columns),canvas=document.createElement('canvas');canvas.width=W*columns;canvas.height=H*rows;const ctx=canvas.getContext('2d');ctx.fillStyle='#121b27';ctx.fillRect(0,0,canvas.width,canvas.height);cards.forEach((c,i)=>{const x=(i%columns)*W,y=Math.floor(i/columns)*H;ctx.drawImage(c.renderer.domElement,x,y,W,H-45);ctx.fillStyle='#f3f7ff';ctx.font='16px sans-serif';ctx.fillText(`${c.item.label||c.item.id} / ${reviewed.get(c.container.dataset.id)?.mark||'未評価'} / ${elapsed.toFixed(2)}秒`,x+15,y+H-15)});canvas.toBlob(blob=>{if(blob)download('roze-stop-compare.png',blob)},'image/png')});
+let previous=performance.now();function animate(now){const dt=Math.min((now-previous)/1000,.2);previous=now;if(playing){elapsed+=dt*Number(controls.rate.value);if(elapsed>maxTime){elapsed=controls.loop.checked?elapsed%maxTime:maxTime;if(!controls.loop.checked){playing=false;controls.play.textContent='▶ 再生'}}}controls.time.value=String(elapsed);controls.timeText.textContent=elapsed.toFixed(2)+'秒';for(const c of cards){apply(c,elapsed);if(c.vrm)c.renderer.render(c.scene,c.camera)}requestAnimationFrame(animate)}requestAnimationFrame(animate);
+const observer=new ResizeObserver(()=>cards.forEach(resizeCard));observer.observe($('grid'));window.addEventListener('resize',()=>cards.forEach(resizeCard));
+</script>
+</body>
+</html>

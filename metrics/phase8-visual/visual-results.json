@@ -1,0 +1,92 @@
+[
+  {
+    "case": "V01",
+    "phase": "settled",
+    "error_m": 1.9073486345888568e-7,
+    "NAVIGATION_PASS": true,
+    "POSE_PASS": null,
+    "IDLE_PASS": null,
+    "reason": ""
+  },
+  {
+    "case": "V02",
+    "phase": "stop_failed",
+    "error_m": 0.23163571325084423,
+    "NAVIGATION_PASS": false,
+    "POSE_PASS": null,
+    "IDLE_PASS": null,
+    "reason": "No safe stop candidate"
+  },
+  {
+    "case": "V03",
+    "phase": "stop_failed",
+    "error_m": 0.22690141610441544,
+    "NAVIGATION_PASS": false,
+    "POSE_PASS": null,
+    "IDLE_PASS": null,
+    "reason": "Safe landing completed without reaching destination"
+  },
+  {
+    "case": "V04",
+    "phase": "stop_failed",
+    "error_m": 0.06310517417657677,
+    "NAVIGATION_PASS": false,
+    "POSE_PASS": null,
+    "IDLE_PASS": null,
+    "reason": "No safe stop candidate"
+  },
+  {
+    "case": "V05",
+    "phase": "settled",
+    "error_m": 0,
+    "NAVIGATION_PASS": true,
+    "POSE_PASS": null,
+    "IDLE_PASS": null,
+    "reason": ""
+  },
+  {
+    "case": "V06",
+    "phase": "stop_failed",
+    "error_m": 0.2373236426316109,
+    "NAVIGATION_PASS": false,
+    "POSE_PASS": null,
+    "IDLE_PASS": null,
+    "reason": "No safe stop candidate"
+  },
+  {
+    "case": "V07",
+    "phase": "stop_failed",
+    "error_m": 0.24379127165509304,
+    "NAVIGATION_PASS": false,
+    "POSE_PASS": null,
+    "IDLE_PASS": null,
+    "reason": "No safe stop candidate"
+  },
+  {
+    "case": "V08",
+    "phase": "stop_failed",
+    "error_m": 0.24625075561674287,
+    "NAVIGATION_PASS": false,
+    "POSE_PASS": null,
+    "IDLE_PASS": null,
+    "reason": "No safe stop candidate"
+  },
+  {
+    "case": "V09",
+    "phase": "settled",
+    "error_m": 0,
+    "NAVIGATION_PASS": true,
+    "POSE_PASS": null,
+    "IDLE_PASS": null,
+    "reason": ""
+  },
+  {
+    "case": "V10",
+    "phase": "stop_failed",
+    "error_m": 0.2913854024774543,
+    "NAVIGATION_PASS": false,
+    "POSE_PASS": null,
+    "IDLE_PASS": null,
+    "reason": "No safe stop candidate"
+  }
+]

@@ -248,10 +248,98 @@ def _begin_collect(character, planted, swing, rt, wp, facing, cancelled=None):
     return (frames if metrics['accepted'] else None), metrics
 
 
-def _begin_final_stop(character, pose, goal, rt, wp, destination=None, *, ground):
+def _begin_final_stop(character, pose, goal, rt, wp, destination=None, *, ground, control=None):
+    """ライブの再生履歴を変更せず、独立再生器で少数の候補を検証する。"""
+    if not hasattr(character, 'asset_pool'):
+        return _begin_final_stop_legacy(character, pose, goal, rt, wp, destination, ground=ground)
+    from stop_replay import capture_replay
+    from stop_runtime import new_character, candidate_specs, refinement_specs, generate_candidate, diagnose
+    from stop_candidate_search import search_candidates
+    import json
+    replay = capture_replay(character, goal, ground, control=control)
+    preferred = replay['metadata']['support']
+    specs = candidate_specs(preferred)
+    def diagnose_progress(frames):
+        metrics = diagnose(replay, frames)
+        if metrics['accepted']:
+            data = replay['metadata']
+            reason = validate_stop_progress(
+                frames, pose, goal if destination is None else destination,
+                frames.support, data['parents'], data['names'])
+            if reason:
+                metrics.update(accepted=False, reason=reason)
+        return metrics
+
+    result = search_candidates(specs,
+        lambda spec: new_character(rt, character.engine, character.asset_pool, replay),
+        lambda scratch, spec: generate_candidate(scratch, replay, spec, rt),
+        diagnose_progress, limit=24, stop_on_first=True)
+    frames = result.pop('frames')
+    if frames is None:
+        refined_specs = refinement_specs(preferred)
+        refined = search_candidates(refined_specs,
+            lambda spec:new_character(rt,character.engine,character.asset_pool,replay),
+            lambda scratch,spec:generate_candidate(scratch,replay,spec,rt),
+            diagnose_progress,limit=24,stop_on_first=True)
+        frames=refined.pop('frames')
+        if refined['selected'] is not None:
+            result['selected']=len(result['candidates'])+refined['selected']
+        result['candidates'].extend(refined['candidates'])
+    recovery_only = False
+    if frames is None:
+        import copy
+        recovery = copy.deepcopy(replay)
+        recovery['metadata']['goal'] = np.asarray(pose)[0, :2].tolist()
+        recovery['metadata']['f001'] = None
+        recovery['metadata'].setdefault('control', {})['destination'] = recovery['metadata']['goal']
+        fallback = search_candidates(specs,
+            lambda spec: new_character(rt, character.engine, character.asset_pool, recovery),
+            lambda scratch, spec: generate_candidate(scratch, recovery, spec, rt),
+            lambda values: diagnose(recovery, values), limit=24, stop_on_first=True)
+        frames = fallback.pop('frames')
+        result['recovery'] = fallback
+        recovery_only = frames is not None
+    if recovery_only:
+        chosen = result['recovery']
+        selected = chosen['candidates'][chosen['selected']]
+        metrics = dict(selected['metrics'], recovery_only=True, search=result,
+                       generation_conditions=selected['specification'])
+    elif result['selected'] is None:
+        metrics = dict(accepted=False, reason='No safe stop candidate', search=result)
+    else:
+        selected = result['candidates'][result['selected']]
+        metrics = dict(selected['metrics'], search=result, generation_conditions=selected['specification'])
+    metrics['travel_distance_m'] = (
+        float(np.linalg.norm(frames[-1][0, :2] - pose[0, :2]))
+        if frames is not None else 0.0)
+    directory = Path(os.environ.get('MOTIONBRICKS_STOP_REPLAY_DIR',
+                                      str(Path(__file__).resolve().parents[1] / 'metrics/stop-replays')))
+    directory.mkdir(parents=True, exist_ok=True)
+    replay['metadata']['search'] = result
+    if frames is not None:
+        replay['metadata']['frames'] = np.asarray(frames).tolist()
+        replay['metadata']['generated_contacts'] = frames.contacts
+        replay['metadata']['generated_support'] = frames.support
+        replay['metadata']['validation_goal'] = np.asarray(pose)[0,:2].tolist() if recovery_only else np.asarray(goal).tolist()
+        replay['metadata']['recovery_only'] = recovery_only
+    (directory / f'stop-{time.time_ns()}.json').write_text(
+        json.dumps(replay, ensure_ascii=False, allow_nan=False), encoding='utf-8')
+    return frames, metrics
+
+
+def _begin_final_stop_legacy(character, pose, goal, rt, wp, destination=None, *, ground):
     """歩行履歴から公式生成し、表示する前に停止区間全体を検証する。"""
     names = list(character.skeleton.joint_names)
     parents = [character.skeleton.joint_parent(i) for i in range(len(names))]
+    replay_directory = os.environ.get('MOTIONBRICKS_STOP_REPLAY_DIR')
+    if replay_directory:
+        from stop_replay import save_replay
+        recorder = character.player.motion_history
+        save_replay(Path(replay_directory) / f'stop-{time.time_ns()}.json',
+                    pose=pose, history=recorder.poses.numpy(), delta_times=recorder.delta_times,
+                    metadata=dict(goal=np.asarray(goal).tolist(), parents=parents, names=names,
+                                  ground=ground, support=stop_support(pose, goal, parents, names),
+                                  replay_scope='History capture only; GPU RNG and VRM mapping not captured'))
     target_pose = build_stop_target(pose, goal, parents, names, ground)
     if target_pose is None:
         return None, dict(accepted=False, stage='target', reason='No safe final stop target')
@@ -349,6 +437,12 @@ def _drain(commands: Queue, nav: NavState, cycle=None):
         nav = result.state
         if result.move_to is not None:
             goal = np.array([result.move_to[0], result.move_to[1], 0.0], dtype=np.float32)
+            if cycle is not None:
+                cycle.retarget_settings = cmd.get('retarget_settings', {})
+                if cmd.get('stop_mode') in ('visual', 'legacy'):
+                    cycle.stop_mode = cmd['stop_mode']
+                else:
+                    cycle.stop_mode = getattr(cycle, 'default_stop_mode', 'legacy')
     return nav, goal
 
 
@@ -405,7 +499,16 @@ def worker(commands: Queue, publish):
         )
         nav = NavState()
         cycle = LocomotionCycle()
+        from visual_stop_runtime import VisualStopRuntime
+        visual_stop = VisualStopRuntime() if os.environ.get('MOTIONBRICKS_VISUAL_STOP') == '1' else None
+        visual_stop_cache = visual_stop
+        cycle.stop_mode = 'visual' if visual_stop else 'legacy'
+        cycle.default_stop_mode = cycle.stop_mode
         cycle.ground_calibration = stop_ground
+        comparison_idle = None
+        if os.environ.get('MOTIONBRICKS_COMPARISON_REPLAY'):
+            from stop_replay import capture_replay
+            comparison_idle = capture_replay(character, character.current_pose.numpy().reshape((-1, 7))[0, :2] + [.3, 0], stop_ground)
         goal = None
         last_generate_ms = 0.0
         frames = 0
@@ -424,6 +527,18 @@ def worker(commands: Queue, publish):
                 return
             nav, moved = drained
             if moved is not None:
+                if cycle.stop_mode == 'visual' and visual_stop_cache is None:
+                    visual_stop_cache = VisualStopRuntime()
+                visual_stop = visual_stop_cache if cycle.stop_mode == 'visual' else None
+                if visual_stop:
+                    visual_stop.selection = None
+                comparison_start = os.environ.get('MOTIONBRICKS_COMPARISON_REPLAY')
+                if comparison_start and nav.move_id != 2:
+                    from stop_replay import load_replay, restore_history
+                    initial = comparison_idle if nav.move_id == 8 else load_replay(str(Path(comparison_start).parent / 'after-turn/source-replay.json') if nav.move_id == 7 else comparison_start)
+                    _sync_pose(character, np.asarray(initial['pose']), wp)
+                    restore_history(character, initial)
+                    last_root = None
                 collect_cancel.set()
                 if collect_job is not None:
                     collect_job[0].cancel()
@@ -455,6 +570,7 @@ def worker(commands: Queue, publish):
             if last_root is not None:
                 root_speed = float(np.linalg.norm(pose[0, :2] - last_root) / DT)
             started_at = time.perf_counter()
+            cycle.visual_selection = visual_stop.observe(character, cycle.goal, stop_ground) if visual_stop and cycle.goal is not None and cycle.stop_requested_s is None else None
             action = cycle.tick(
                 {
                     "pose": pose,
@@ -475,7 +591,16 @@ def worker(commands: Queue, publish):
             )
             if action.begin_final_stop:
                 try:
-                    stop_frames, stop_metrics = _begin_final_stop(character, action.pose, cycle.final_stop_goal, rt, wp, destination=cycle.goal, ground=stop_ground)
+                    if visual_stop:
+                        stop_frames, stop_metrics = visual_stop.generate(character, cycle.goal, stop_ground, rt)
+                        cycle.note_final_stop(stop_frames, stop_metrics)
+                        character.movement.reset_desired_velocity()
+                        continue
+                    stop_control = dict(move_id=cycle.move_id, settle_seq=cycle.settle_seq,
+                                        retry_count=cycle.stop_retry_count,
+                                        last_stop_distance_m=cycle.last_stop_distance_m,
+                                        facing=facing.tolist())
+                    stop_frames, stop_metrics = _begin_final_stop(character, action.pose, cycle.final_stop_goal, rt, wp, destination=cycle.goal, ground=stop_ground, control=dict(**stop_control, phase=cycle.phase, speed_mps=root_speed, stop_prediction_m=cycle.stop_prediction_m, destination=None if cycle.goal is None else cycle.goal.tolist(), contacts=dict(left=cycle.plants.left, right=cycle.plants.right), retarget_settings=getattr(cycle,'retarget_settings',{})))
                 except Exception as exc:
                     _sync_pose(character, pose, wp, seed=True)
                     stop_frames, stop_metrics = None, dict(accepted=False, stage='generation', reason=f'Final stop generation failed: {exc}')
@@ -514,6 +639,8 @@ def worker(commands: Queue, publish):
                 character.step(DT, _command(rt, facing, None))
             elif action.pose is not None:
                 _sync_pose(character, action.pose, wp, seed=action.seed)
+                if cycle.phase in ('final_step','stop_retry') and not action.seed:
+                    character.player.record_pose(DT,character.current_pose)
                 if action.seed:
                     character.movement.reset_desired_velocity()
             step_ms = (time.perf_counter() - started_at) * 1000.0
@@ -548,6 +675,9 @@ def worker(commands: Queue, publish):
             publish(
                 {
                     "type": "frame",
+                    "visual_selection": visual_stop.selection if visual_stop else None,
+                    "stop_mode": cycle.stop_mode,
+                    "destination_xy": None if cycle.goal is None else cycle.goal[:2].tolist(),
                     "phase": cycle.phase,
                     "official_state": character.state_machine.state.name,
                     "actual_speed_mps": round(root_speed, 3),

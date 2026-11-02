@@ -1,3 +1,4 @@
+import {MAP, calcWorldQuats, applySomaRotations} from './somaRetarget.js';
 import {preflightCollect} from './collectValidation.js';
 import * as THREE from 'three';
 import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
@@ -11,6 +12,7 @@ import {emptyOwner, reduceOwner, shouldApplyStance} from './poseOwner.js';
 import {isSceneBootReady, spawnOffset} from './bootGate.js';
 import {GaitDebug} from './gaitDebug.js';
 import {formatGaitStatus} from './gaitView.js';
+import {formatVisualStop} from './visualStopView.js';
 import {compareFootHeights} from './footHeightDiagnostics.js';
 import idleMotionUrl from '../../motions/idle.vrma?url';
 import idleBreakMotionUrl from '../../motions/idle_06.vrma?url';
@@ -138,6 +140,57 @@ renderer.setSize(window.innerWidth,window.innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 document.body.insertBefore(renderer.domElement, document.querySelector('#toolbar'));
 const controls = new OrbitControls(camera, renderer.domElement);
+// 自動検証時だけ、同一姿勢を三方向から描画して骨座標と対応づける。
+if (new URLSearchParams(location.search).has('observation')) {
+  window.motionBricksObservation = {
+    state() { return lastFrame; },
+    move(dx, dy) {
+      if (!vrm || !sceneReady || socket?.readyState !== WebSocket.OPEN || !lastFrame) {
+        throw new Error('Scene is not ready');
+      }
+      socket.send(JSON.stringify({type:'move', x:lastFrame.poses[0][0]+dx,
+        y:lastFrame.poses[0][1]+dy, hold_stance:true, stop_mode:document.querySelector('#stopMode').value}));
+    },
+    capture() {
+      if (!vrm || !sceneReady || !lastFrame) throw new Error('Scene is not ready');
+      const position = camera.position.clone();
+      const rotation = camera.quaternion.clone();
+      const root = vrm.scene.position.clone();
+      vrm.scene.updateMatrixWorld(true);
+      const hips = vrm.humanoid.getNormalizedBoneNode('hips');
+      const facing = new THREE.Vector3(0,0,1).applyQuaternion(hips.getWorldQuaternion(new THREE.Quaternion()));
+      facing.y=0;
+      facing.normalize();
+      const target = root.clone().add(new THREE.Vector3(0, 0.9, 0));
+      const joints = {};
+      for (const side of ['left', 'right']) {
+        joints[side] = {};
+        for (const part of ['UpperLeg', 'LowerLeg', 'Foot', 'Toes']) {
+          const node = vrm.humanoid.getRawBoneNode(side+part);
+          joints[side][part] = node?.getWorldPosition(new THREE.Vector3()).toArray() ?? null;
+        }
+      }
+      const images = {};
+      for (const [name, angle] of [['front',0], ['side',Math.PI/2], ['45deg',Math.PI/4]]) {
+        const offset = new THREE.Vector3(3.2*Math.sin(angle),1.2,3.2*Math.cos(angle));
+        offset.applyAxisAngle(new THREE.Vector3(0,1,0),Math.atan2(facing.x,facing.z));
+        camera.position.copy(root).add(offset);
+        camera.lookAt(target);
+        renderer.render(scene,camera);
+        images[name] = renderer.domElement.toDataURL('image/png');
+      }
+      camera.position.copy(position);
+      camera.quaternion.copy(rotation);
+      renderer.render(scene,camera);
+      return {capturedAt:performance.now(), displayFrame:observationFrame, displayedPose:observationPose, frame:lastFrame, facing:facing.toArray(), floorY:FLOOR_TOP, joints, images};
+    },
+    environment(clear) {
+      place.group.visible=!clear;
+      clickFloor.material.opacity=clear?1:0;
+      clickFloor.material.color.setHex(0x777777);
+    },
+  };
+}
 controls.enableDamping = true;
 controls.dampingFactor = 0.08;
 controls.enablePan = true;
@@ -182,6 +235,9 @@ let vrm=null;
 let rig=null;
 let currentPose=null;
 let lastPose=null;
+let lastFrame=null;
+let observationFrame=0;
+let observationPose=null;
 let socket=null;
 let lastDecision='—';
 let lastStage='';
@@ -216,30 +272,6 @@ const openFloor=cafeUsecases.find((item)=>item.id==='open-floor') ?? {
   id:'open-floor', title:'空いた床', intent:'カフェの空いた床に着いた。自然に立つ。', hints:['自然に立つ'], marker:false,
 };
 
-// ロゼの VRM 1.0 人体ボーン。Spine2 / Neck1 / Jaw は対応する正規化ボーンが無い。
-const MAP = {
-  Hips:'hips', Spine1:'spine', Chest:'chest',
-  Neck2:'neck', Head:'head', LeftEye:'leftEye', RightEye:'rightEye',
-  LeftShoulder:'leftShoulder', LeftArm:'leftUpperArm', LeftForeArm:'leftLowerArm', LeftHand:'leftHand',
-  LeftHandThumbEnd:'leftThumbDistal', LeftHandMiddleEnd:'leftMiddleDistal',
-  RightShoulder:'rightShoulder', RightArm:'rightUpperArm', RightForeArm:'rightLowerArm', RightHand:'rightHand',
-  RightHandThumbEnd:'rightThumbDistal', RightHandMiddleEnd:'rightMiddleDistal',
-  LeftLeg:'leftUpperLeg', LeftShin:'leftLowerLeg', LeftFoot:'leftFoot', LeftToeBase:'leftToes',
-  RightLeg:'rightUpperLeg', RightShin:'rightLowerLeg', RightFoot:'rightFoot', RightToeBase:'rightToes',
-};
-// World basis conversion: NVIDIA demos Z-up => Three.js Y-up.
-const basis=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,0,0),-Math.PI/2);
-const basisInv=basis.clone().invert();
-const q=(arr)=>new THREE.Quaternion(arr[3],arr[4],arr[5],arr[6]);
-function toThreeWorldQuat(v){return basis.clone().multiply(v).multiply(basisInv)}
-function calcWorldQuats(pose,parents){
-  const out=[];
-  for(let i=0;i<pose.length;i++){
-    const local=q(pose[i]);
-    out.push(parents[i] < 0 ? local : out[parents[i]].clone().multiply(local));
-  }
-  return out;
-}
 let restSourceWorld=[];
 let restDestWorld=new Map();
 function initializeRetarget(){
@@ -277,20 +309,7 @@ function applyPose(pose){
   // Roze's scene origin follows the source hips ground position; don't add hips height twice.
   placeRoot(pose);
   vrm.scene.updateMatrixWorld(true);
-  const world=calcWorldQuats(pose,rig.parents);
-  const used=new Set();
-  for(let i=0;i<world.length;i++){
-    const bone=MAP[rig.joint_names[i]];
-    if(!bone||used.has(bone)||!restDestWorld.has(bone))continue;
-    used.add(bone);
-    const node=vrm.humanoid.getNormalizedBoneNode(bone);
-    if(!node)continue;
-    const delta=world[i].clone().multiply(restSourceWorld[i].clone().invert());
-    const desired=toThreeWorldQuat(delta).multiply(restDestWorld.get(bone));
-    const parentWorld=node.parent.getWorldQuaternion(new THREE.Quaternion());
-    node.quaternion.copy(parentWorld.invert().multiply(desired));
-    node.updateMatrixWorld(true);
-  }
+  applySomaRotations(vrm, rig, pose, restSourceWorld, restDestWorld);
 }
 function markInput(){
   lastInputAt=performance.now();
@@ -681,7 +700,7 @@ function sendArrival(usecase, x, z){
   clickAt=performance.now();
   lastDecision=`${usecase.title} を選択中…`;
   const goal=threePointToRuntime(x-spawn.x, z-spawn.z);
-  socket.send(JSON.stringify({type:'move', x:goal.x, y:goal.y, usecase:usecase.id, intent:usecase.intent, hold_stance:usecase.id==='open-floor'}));
+  socket.send(JSON.stringify({type:'move', x:goal.x, y:goal.y, usecase:usecase.id, intent:usecase.intent, hold_stance:usecase.id==='open-floor', retarget_settings:currentStance(), stop_mode:document.querySelector('#stopMode').value}));
 }
 function buildUsecaseList(){
   const root=document.querySelector('#cases');
@@ -696,7 +715,9 @@ function buildUsecaseList(){
 }
 buildUsecaseList();
 function connect(){
-  socket=new WebSocket('ws://127.0.0.1:8765/ws');
+  const observationPort=new URLSearchParams(location.search).has('observation')
+    ? new URLSearchParams(location.search).get('wsPort') : null;
+  socket=new WebSocket(`ws://127.0.0.1:${observationPort||8765}/ws`);
   socket.onopen=()=>{status.textContent='接続済み。VRMを読み込んでください。'};
   socket.onmessage=(e)=>{
     const msg=JSON.parse(e.data);
@@ -707,6 +728,7 @@ function connect(){
     }
     if(msg.type==='collect_candidate') reviewCollect(msg);
     if(msg.type==='frame'){
+      document.querySelector('#visualStopStatus').textContent=formatVisualStop(msg);
       if(owner.seenMove!=null && msg.gait?.move_id!=null && msg.gait.move_id<owner.seenMove) return;
       if(msg.gait?.move_id===owner.moveId && msg.gait?.settle_seq<owner.settleSeq) return;
       if(msg.phase){
@@ -736,7 +758,7 @@ function connect(){
         groundedIdle?.captureUpper();
         collectBlendStarted=performance.now();
       }
-      lastPose=currentPose; currentPose=msg.poses; poseStamp=performance.now();
+      lastPose=currentPose; currentPose=msg.poses; lastFrame=msg; poseStamp=performance.now();
       if(reduced.capture) lastPose=currentPose;
       owner=reduced;
       if(clickAt){clickLatency=performance.now()-clickAt; clickAt=0}
@@ -858,6 +880,7 @@ function animate(){
   const delta=Math.min(clock.getDelta(),.1);
   const blend=Math.min(1,(performance.now()-poseStamp)/(1000/60));
   const pose=currentPose?lerpPose(lastPose, currentPose, blend):null;
+  observationPose=pose;
   if(vrm){
     if(!sceneReady){
       tryRevealCharacter();
@@ -971,5 +994,6 @@ function animate(){
       `d3-mini: ${lastDecision}`,currentMotionState,lastStage,lastError].filter(Boolean).join('\n');
   }
   renderer.render(scene,camera);
+  observationFrame+=1;
 }
 animate();
