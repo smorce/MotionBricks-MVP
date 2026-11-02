@@ -1,5 +1,21 @@
 {
+  "selection_policy": "human_visual_priority",
   "safe_ids": [],
-  "recommended_ids": [],
+  "recommended_ids": [
+    "A-0.150",
+    "A-0.600",
+    "A-0.200",
+    "A-1.000",
+    "A-0.800",
+    "C-0.800"
+  ],
+  "diagnostic_failed_recommended_ids": [
+    "A-0.150",
+    "A-0.600",
+    "A-0.200",
+    "A-1.000",
+    "A-0.800",
+    "C-0.800"
+  ],
   "unreviewed_ids": []
 }

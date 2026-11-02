@@ -12,13 +12,15 @@ class ProbeTests(unittest.TestCase):
         self.assertEqual(len(specs), 36)
         self.assertEqual(len({s['id'] for s in specs}), 36)
 
-    def test_human_cannot_override_safety(self):
+    def test_human_review_takes_priority_without_changing_diagnostics(self):
         candidates = [dict(id='A', metrics=dict(accepted=False)),
                       dict(id='B', metrics=dict(accepted=True)),
                       dict(id='C', metrics=dict(accepted=True))]
         result = recommendations(candidates, {'A':'good', 'B':'bad'})
         self.assertEqual(result['safe_ids'], ['B', 'C'])
-        self.assertEqual(result['recommended_ids'], [])
+        self.assertEqual(result['recommended_ids'], ['A'])
+        self.assertEqual(result['diagnostic_failed_recommended_ids'], ['A'])
+        self.assertFalse(candidates[0]['metrics']['accepted'])
         self.assertEqual(result['unreviewed_ids'], ['C'])
 
     def test_velocity_uses_interval_before_newest_pose(self):

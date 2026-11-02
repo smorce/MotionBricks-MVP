@@ -18,11 +18,13 @@ def specifications(distances=DISTANCES):
 
 def recommendations(candidates, reviews):
     safe = [c for c in candidates if c['metrics'].get('accepted') is True]
-    natural = [c for c in safe if reviews.get(c['id']) == 'good']
+    natural = [c for c in candidates if reviews.get(c['id']) == 'good']
     natural.sort(key=lambda c: tuple(c['metrics'].get(k, c['metrics'].get('quality', {}).get(k, float('inf'))) for k in
                  ('arrival_error_m', 'support_slide_m', 'generation_seconds')))
-    return dict(safe_ids=[c['id'] for c in safe], recommended_ids=[c['id'] for c in natural],
-                unreviewed_ids=[c['id'] for c in safe if reviews.get(c['id'], 'unknown') == 'unknown'])
+    return dict(selection_policy='human_visual_priority',
+                safe_ids=[c['id'] for c in safe], recommended_ids=[c['id'] for c in natural],
+                diagnostic_failed_recommended_ids=[c['id'] for c in natural if c['metrics'].get('accepted') is False],
+                unreviewed_ids=[c['id'] for c in candidates if reviews.get(c['id'], 'unknown') == 'unknown'])
 
 
 def state_features(replay):
