@@ -11,6 +11,17 @@ from final_stop import calibrate_stop_ground, validate_stop_motion
 
 
 class StopAutomationTests(unittest.TestCase):
+    def test_diagnostics_share_forward_kinematics(self):
+        from unittest.mock import patch
+        from step_cycle import fk
+        from stop_diagnostics import diagnose_stop
+        from final_stop import check_bone_lengths
+        pose,parents,names=standing_pose()
+        frames=np.repeat(pose[None],8,axis=0)
+        with patch('step_cycle.fk',wraps=fk) as measured:
+            diagnose_stop(frames,pose,[0,0],parents,names,calibrate_stop_ground(pose,parents,names),check_bone_lengths(frames,pose,names))
+        self.assertLessEqual(measured.call_count,len(frames)+4)
+
     def test_gradual_foot_inversion_is_rejected(self):
         pose,parents,names=standing_pose()
         frames=np.repeat(pose[None],80,axis=0)

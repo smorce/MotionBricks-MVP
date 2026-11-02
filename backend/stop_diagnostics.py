@@ -4,6 +4,12 @@ import numpy as np
 from collect_stance import knees_valid, knees_continuous, stance
 
 
+def points_from_world(positions,names):
+    return {side:{'ankle':positions[names.index(side.title()+'Foot')].copy(),
+                  'toe':positions[names.index(side.title()+'ToeBase')].copy()}
+            for side in ('left','right')}
+
+
 def diagnose_stop(
     frames,
     original,
@@ -15,13 +21,17 @@ def diagnose_stop(
     *,
     contacts=None,
     support=None,
+    world=None,
 ):
     from final_stop import contact_points
-    from step_cycle import foot_points, fk
+    from step_cycle import fk
+
+    if world is None:
+        world=[fk(p,parents) for p in [original,*frames]]
 
     points = [
-        contact_points(foot_points(p, parents, names), calibration)
-        for p in [original, *frames]
+        contact_points(points_from_world(positions,names), calibration)
+        for positions,_ in world
     ]
     floor = calibration["floor_z"]
     checks = {}
@@ -42,9 +52,8 @@ def diagnose_stop(
     )
     angles = []
     sole_up=[]
-    _,initial_rotations=fk(original,parents)
-    for frame in frames:
-        positions, world_rotations = fk(frame, parents)
+    _,initial_rotations=world[0]
+    for frame,(positions,world_rotations) in zip(frames,world[1:]):
         row = {}
         for side in ("Left", "Right"):
             hip, knee, ankle = [
@@ -73,8 +82,8 @@ def diagnose_stop(
         [
             i
             for i, p in enumerate(frames)
-            if not knees_valid(p, parents, names)
-            or not knees_continuous(p, original, parents, names)
+            if not knees_valid(p, parents, names,positions=world[i+1][0])
+            or not knees_continuous(p, original, parents, names,current=world[i+1][0],initial=world[0][0])
         ],
         angles_deg=angles,
     )

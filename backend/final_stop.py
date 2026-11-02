@@ -134,9 +134,12 @@ def validate_stop_motion(frames, original, goal, parents, names, ground):
         return result
     result.update(check_bone_lengths(frames, original, names))
     calibration = ground
-    raw_points = [foot_points(p, parents, names) for p in frames]
+    from step_cycle import fk
+    from stop_diagnostics import points_from_world
+    world=[fk(p,parents) for p in [original,*frames]]
+    raw_points = [points_from_world(positions,names) for positions,_ in world[1:]]
     points = [contact_points(p, calibration) for p in raw_points]
-    start = contact_points(foot_points(original, parents, names), calibration)
+    start = contact_points(points_from_world(world[0][0],names), calibration)
     ground = calibration['floor_z']
     result['ground_world_z'] = ground
     penetration = next(((i, side, part) for i, p in enumerate(points)
@@ -155,7 +158,7 @@ def validate_stop_motion(frames, original, goal, parents, names, ground):
         result['reason'] = 'Stop missed destination'
     elif any(np.linalg.norm(b[0, :3]-a[0, :3]) > .06 for a, b in zip([original, *frames[:-1]], frames)):
         result['reason'] = 'Stop root discontinuity'
-    elif any(not knees_valid(p, parents, names) or not knees_continuous(p, original, parents, names) for p in frames):
+    elif any(not knees_valid(p, parents, names,positions=world[i+1][0]) or not knees_continuous(p, original, parents, names,current=world[i+1][0],initial=world[0][0]) for i,p in enumerate(frames)):
         result['reason'] = 'Invalid stop knee bend'
     elif not result['bone_lengths_valid']:
         result['reason'] = 'Stop bone lengths changed'
@@ -175,7 +178,7 @@ def validate_stop_motion(frames, original, goal, parents, names, ground):
         result.update(accepted=True, reason='')
     from stop_diagnostics import diagnose_stop
     result['checks'] = diagnose_stop(frames, original, goal, parents, names, calibration, result,
-                                     contacts=contacts, support=support)
+                                     contacts=contacts, support=support,world=world)
     result['failures'] = [name for name, check in result['checks'].items() if not check['passed']]
     checks=result['checks']
     knee_angles=np.asarray([[row['left'],row['right']] for row in checks['knees']['angles_deg']])

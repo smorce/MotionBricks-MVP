@@ -28,8 +28,9 @@ def valid_pose(pose):
             and np.allclose(np.linalg.norm(pose[:, 3:], axis=1), 1, atol=.01))
 
 
-def knees_valid(pose, parents, names):
-    positions, _ = fk(pose, parents)
+def knees_valid(pose, parents, names, *, positions=None):
+    if positions is None:
+        positions, _ = fk(pose, parents)
     for side in ('Left', 'Right'):
         hip, knee, ankle = [positions[names.index(side + part)] for part in ('Leg', 'Shin', 'Foot')]
         upper, lower = knee - hip, ankle - knee
@@ -39,9 +40,11 @@ def knees_valid(pose, parents, names):
     return True
 
 
-def knees_continuous(pose, original, parents, names):
-    current, _ = fk(pose, parents)
-    initial, _ = fk(original, parents)
+def knees_continuous(pose, original, parents, names, *, current=None, initial=None):
+    if current is None:
+        current, _ = fk(pose, parents)
+    if initial is None:
+        initial, _ = fk(original, parents)
     for side in ('Left', 'Right'):
         def bend(points):
             hip, knee, ankle = [points[names.index(side + part)] for part in ('Leg', 'Shin', 'Foot')]
