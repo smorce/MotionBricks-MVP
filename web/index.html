@@ -18,7 +18,8 @@
     #stance{margin-top:12px;padding-top:10px;border-top:1px solid #2c3854}
     #stance input[type=range]{width:100%;accent-color:#e0a96d;margin:2px 0 6px}
     #stanceData{font-family:ui-monospace,Consolas,monospace;font-size:12px;line-height:1.45;background:#0e1422;border-radius:8px;padding:6px 8px;color:#d5f5e8;margin:0;word-break:break-all}
-    #stanceCopy{margin-top:6px;background:#243049;color:#fff;border:1px solid #3d4d6e;border-radius:8px;padding:6px 8px;cursor:pointer;font-size:12px}
+    #stanceCopy,#gaitDebug,#gaitLog{margin-top:6px;background:#243049;color:#fff;border:1px solid #3d4d6e;border-radius:8px;padding:6px 8px;cursor:pointer;font-size:12px}
+    #gaitReadout{font-family:ui-monospace,Consolas,monospace;font-size:11px;line-height:1.4;color:#d5f5e8;margin:6px 0 0}
   </style>
 </head>
 <body>
@@ -37,8 +38,11 @@
     </div>
     <label>ロゼのVRMファイル <input id="vrmFile" type="file" accept=".vrm"></label>
     <label>背景画像（任意） <input id="backgroundFile" type="file" accept="image/*"></label>
-    <p id="blurb">場面をクリックすると、1173件のポーズから到着姿勢を選び、歩いてからその姿勢へ移ります。</p>
-    <p id="tips">左クリックで場面へ移動。左ドラッグで回転、右ドラッグで平行移動、ホイールでズーム。</p>
+    <p id="blurb">地面をクリックすると、距離に合わせて歩いて止まり、着地した足幅のまま待機します。マーカーは到着動作です。</p>
+    <p id="tips">左クリックで場面へ移動。左ドラッグで回転、右ドラッグで平行移動、ホイールでズーム。D キーで足の接地表示。</p>
+    <button id="gaitDebug" type="button">歩行デバッグを表示</button>
+    <button id="gaitLog" type="button">計測ログを保存</button>
+    <p id="gaitReadout"></p>
     <div id="cases"></div>
     <div id="status">接続待ち…</div>
   </div>

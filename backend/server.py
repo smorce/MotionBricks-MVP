@@ -14,6 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from cafe_usecases import resolve_usecase
 from d3_router import load_catalog, choose_arrival_pose
+from gait_log import GAIT_LOG
 
 logger = logging.getLogger('roze')
 commands = Queue()
@@ -99,7 +100,25 @@ def roze_vrm():
 def get_catalog():
     return catalog
 
+@app.get('/gait-log')
+def gait_log_json():
+    from fastapi.responses import Response
+    return Response(GAIT_LOG.to_json(), media_type='application/json')
+
+@app.get('/gait-log.csv')
+def gait_log_csv():
+    from fastapi.responses import Response
+    return Response(GAIT_LOG.to_csv(), media_type='text/csv')
+
 async def route_and_submit(ws: WebSocket, msg: dict, request_number: int):
+    # 通常の床クリックは到着ポーズを生成しない。特定動作だけ d3-mini に渡す。
+    if msg.get('hold_stance') is True:
+        await ws.send_json({
+            'type': 'decision', 'pose_id': '', 'name': '立ち待機', 'confidence': 1.0,
+            'backend': 'hold_stance', 'elapsed_ms': 0, 'usecase': msg.get('usecase') or 'open-floor',
+            'usecase_title': '空いた床', 'category': 'idle', 'catalog_size': len(catalog),
+        })
+        return
     x = float(msg.get('x', 0))
     y = float(msg.get('y', 0))
     case = resolve_usecase(msg.get('usecase'))
@@ -135,7 +154,7 @@ async def ws_endpoint(ws: WebSocket):
                 # 移動はすぐ開始する。遅れて届いた d3-mini の結果は move_id が違うので捨てる。
                 move_id = next(move_ids)
                 request_numbers[ws] = move_id
-                commands.put({'type':'move','x':float(msg['x']),'y':float(msg['y']),'move_id':move_id})
+                commands.put({'type':'move','x':float(msg['x']),'y':float(msg['y']),'move_id':move_id, 'hold_stance':msg.get('hold_stance') is True})
                 asyncio.create_task(route_and_submit(ws, msg, move_id))
     except WebSocketDisconnect:
         pass

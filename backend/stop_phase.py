@@ -26,6 +26,7 @@ class NavState:
     target_pose_id: str = "F001"
     arrived_sent: bool = False
     pose_applied: bool = False
+    hold_stance: bool = False
 
 
 @dataclass(frozen=True)
@@ -55,10 +56,11 @@ def apply_nav_command(state: NavState, cmd: dict) -> CommandResult:
                 target_pose_id="F001",
                 arrived_sent=False,
                 pose_applied=False,
+                hold_stance=cmd.get("hold_stance") is True,
             ),
             move_to=(x, y),
         )
-    if kind == "pose_choice" and cmd.get("move_id") == state.move_id:
+    if kind == "pose_choice" and cmd.get("move_id") == state.move_id and not state.hold_stance:
         pose_id = cmd.get("pose_id")
         if not isinstance(pose_id, str) or not pose_id:
             return CommandResult(state)
@@ -84,10 +86,11 @@ def after_playback(
     in_clip_transition: bool,
     time_to_transition: float,
     dt: float,
+    hold_stance: bool = False,
 ) -> tuple[str, bool]:
     """再生結果から次の段階と、ポーズ生成を始めるかを返す。"""
     if phase == STOPPING and in_idle_loop:
-        phase = POSE_PENDING
+        phase = IDLE if hold_stance else POSE_PENDING
     if phase == POSE_PENDING and not in_clip_transition:
         return phase, True
     if phase == POSE_TRANSITION and time_to_transition <= dt:

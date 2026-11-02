@@ -1,0 +1,41 @@
+/** 停止姿勢の所有者。速度では破棄しない。WebSocket の遅延フレームは moveId で捨てる。 */
+
+export function emptyOwner() {
+  return {mode: 'live', moveId: null, settleSeq: 0, capture: false, blend: false, seenMove: null};
+}
+
+export function reduceOwner(owner, frame) {
+  const moveId = frame.moveId ?? null;
+  const settleSeq = frame.settleSeq ?? 0;
+  if (frame.phase === 'settled') {
+    const stale = owner.mode === 'live' && owner.seenMove != null && moveId != null && moveId !== owner.seenMove;
+    if (stale) return owner;
+    if (owner.mode === 'settled' && owner.settleSeq === settleSeq && owner.moveId === moveId) {
+      return {...owner, capture: owner.capture, blend: false};
+    }
+    return {
+      mode: 'settled',
+      moveId,
+      settleSeq,
+      capture: true,
+      blend: false,
+      seenMove: moveId ?? owner.seenMove,
+    };
+  }
+  if (owner.mode === 'settled') {
+    return {mode: 'live', moveId, settleSeq, capture: false, blend: true, seenMove: moveId ?? owner.seenMove};
+  }
+  return {
+    mode: 'live',
+    moveId,
+    settleSeq,
+    capture: false,
+    blend: owner.blend,
+    seenMove: moveId ?? owner.seenMove,
+  };
+}
+
+/** 停止姿勢のスナップショットには、歩行中のスライダー補正が既に入っている。 */
+export function shouldApplyStance(owner) {
+  return owner.mode !== 'settled';
+}
