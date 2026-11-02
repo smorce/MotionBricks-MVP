@@ -495,7 +495,13 @@ def worker(commands: Queue, publish):
         )
         nav = NavState()
         cycle = LocomotionCycle()
+        from visual_stop_runtime import VisualStopRuntime
+        visual_stop = VisualStopRuntime() if os.environ.get('MOTIONBRICKS_VISUAL_STOP') == '1' else None
         cycle.ground_calibration = stop_ground
+        comparison_idle = None
+        if os.environ.get('MOTIONBRICKS_COMPARISON_REPLAY'):
+            from stop_replay import capture_replay
+            comparison_idle = capture_replay(character, character.current_pose.numpy().reshape((-1, 7))[0, :2] + [.3, 0], stop_ground)
         goal = None
         last_generate_ms = 0.0
         frames = 0
@@ -514,6 +520,13 @@ def worker(commands: Queue, publish):
                 return
             nav, moved = drained
             if moved is not None:
+                comparison_start = os.environ.get('MOTIONBRICKS_COMPARISON_REPLAY')
+                if comparison_start and nav.move_id != 2:
+                    from stop_replay import load_replay, restore_history
+                    initial = comparison_idle if nav.move_id == 8 else load_replay(str(Path(comparison_start).parent / 'after-turn/source-replay.json') if nav.move_id == 7 else comparison_start)
+                    _sync_pose(character, np.asarray(initial['pose']), wp)
+                    restore_history(character, initial)
+                    last_root = None
                 collect_cancel.set()
                 if collect_job is not None:
                     collect_job[0].cancel()
@@ -545,6 +558,7 @@ def worker(commands: Queue, publish):
             if last_root is not None:
                 root_speed = float(np.linalg.norm(pose[0, :2] - last_root) / DT)
             started_at = time.perf_counter()
+            cycle.visual_selection = visual_stop.observe(character, cycle.goal, stop_ground) if visual_stop and cycle.goal is not None and cycle.stop_requested_s is None else None
             action = cycle.tick(
                 {
                     "pose": pose,
@@ -565,6 +579,11 @@ def worker(commands: Queue, publish):
             )
             if action.begin_final_stop:
                 try:
+                    if visual_stop:
+                        stop_frames, stop_metrics = visual_stop.generate(character, cycle.goal, stop_ground, rt)
+                        cycle.note_final_stop(stop_frames, stop_metrics)
+                        character.movement.reset_desired_velocity()
+                        continue
                     stop_control = dict(move_id=cycle.move_id, settle_seq=cycle.settle_seq,
                                         retry_count=cycle.stop_retry_count,
                                         last_stop_distance_m=cycle.last_stop_distance_m,
@@ -644,6 +663,7 @@ def worker(commands: Queue, publish):
             publish(
                 {
                     "type": "frame",
+                    "visual_selection": visual_stop.selection if visual_stop else None,
                     "phase": cycle.phase,
                     "official_state": character.state_machine.state.name,
                     "actual_speed_mps": round(root_speed, 3),

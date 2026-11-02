@@ -361,6 +361,8 @@ class LocomotionCycle:
                     self.phase = STOP_FAILED
                     self.recovery_pose = frame.copy()
                     self.stop_failure_reason = 'Safe landing completed without reaching destination'
+                elif self.final_stop_metrics.get('acceptance_basis') == 'experimental_playback_only':
+                    self._settle(frame, 'visual_stop_complete')
                 elif np.linalg.norm(frame[0, :2] - self.goal[:2]) <= MICRO_M:
                     self._settle(frame, 'final_stop_complete')
                 else:
@@ -375,7 +377,7 @@ class LocomotionCycle:
         if self.phase == COLLECT_PREPARING:
             return self._action(self.settled_pose, pose_out=self.settled_pose, obs=obs)
 
-        if self.mode == "micro" and self.phase != SETTLED:
+        if self.mode == "micro" and self.phase != SETTLED and getattr(self, 'visual_selection', None) is None:
             if self.stop_requested_s is None:
                 self.stop_requested_s = self.clock
                 self.stop_facing = facing.copy()
@@ -392,6 +394,21 @@ class LocomotionCycle:
         predicted = max(self._flight.values()) * max(0.0, float(obs.get("actual_speed") or 0.0))
         self.stop_prediction_m = min(self.choice.final_window_m, max(predicted, self.last_stop_distance_m))
         stop_at = self.choice.final_window_m if gait_plan.USE_PROCEDURAL_STEP else max(MICRO_M, self.stop_prediction_m)
+        visual = getattr(self, 'visual_selection', None)
+        if visual is not None and self.stop_requested_s is None:
+            if visual['status'] == 'matched' and visual['action'] == 'stop':
+                self.stop_requested_s = self.clock
+                self.phase = FINAL_STEP
+                action = self._action(pose, pose_out=pose, obs=obs)
+                action.begin_final_stop = True
+                return action
+            if visual['status'] == 'unknown' and distance <= .15:
+                self.phase = STOP_FAILED
+                self.recovery_pose = pose.copy()
+                self.stop_failure_reason = 'No visually reviewed stop state'
+                return self._action(pose, pose_out=pose, obs=obs)
+            self.mode = 'walk'
+            stop_at = 0
         if self.stop_requested_s is None and self.mode == "walk" and distance > stop_at:
             self.phase = DECELERATING if distance <= DECEL_ZONE_M else MOVING
             prime = not self.walk_primed
