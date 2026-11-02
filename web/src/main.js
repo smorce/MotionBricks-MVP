@@ -681,7 +681,7 @@ function sendArrival(usecase, x, z){
   clickAt=performance.now();
   lastDecision=`${usecase.title} を選択中…`;
   const goal=threePointToRuntime(x-spawn.x, z-spawn.z);
-  socket.send(JSON.stringify({type:'move', x:goal.x, y:goal.y, usecase:usecase.id, intent:usecase.intent, hold_stance:usecase.id==='open-floor'}));
+  socket.send(JSON.stringify({type:'move', x:goal.x, y:goal.y, usecase:usecase.id, intent:usecase.intent, hold_stance:usecase.id==='open-floor', retarget_settings:currentStance()}));
 }
 function buildUsecaseList(){
   const root=document.querySelector('#cases');

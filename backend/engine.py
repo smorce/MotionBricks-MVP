@@ -248,7 +248,71 @@ def _begin_collect(character, planted, swing, rt, wp, facing, cancelled=None):
     return (frames if metrics['accepted'] else None), metrics
 
 
-def _begin_final_stop(character, pose, goal, rt, wp, destination=None, *, ground):
+def _begin_final_stop(character, pose, goal, rt, wp, destination=None, *, ground, control=None):
+    """ライブの再生履歴を変更せず、独立再生器で少数の候補を検証する。"""
+    if not hasattr(character, 'asset_pool'):
+        return _begin_final_stop_legacy(character, pose, goal, rt, wp, destination, ground=ground)
+    from stop_replay import capture_replay
+    from stop_runtime import new_character, candidate_specs, refinement_specs, generate_candidate, diagnose
+    from stop_candidate_search import search_candidates
+    import json
+    replay = capture_replay(character, goal, ground, control=control)
+    preferred = replay['metadata']['support']
+    specs = candidate_specs(preferred)
+    specs = [specs[i] for i in (4, 6, 16, 18)]
+    result = search_candidates(specs,
+        lambda spec: new_character(rt, character.engine, character.asset_pool, replay),
+        lambda scratch, spec: generate_candidate(scratch, replay, spec, rt),
+        lambda frames: diagnose(replay, frames), limit=4, stop_on_first=True)
+    frames = result.pop('frames')
+    if frames is None:
+        refined_specs = refinement_specs(preferred)
+        refined = search_candidates([refined_specs[8],refined_specs[10]],
+            lambda spec:new_character(rt,character.engine,character.asset_pool,replay),
+            lambda scratch,spec:generate_candidate(scratch,replay,spec,rt),
+            lambda values:diagnose(replay,values),limit=2,stop_on_first=True)
+        frames=refined.pop('frames')
+        if refined['selected'] is not None:
+            result['selected']=len(result['candidates'])+refined['selected']
+        result['candidates'].extend(refined['candidates'])
+    recovery_only = False
+    if frames is None:
+        import copy
+        recovery = copy.deepcopy(replay)
+        recovery['metadata']['goal'] = np.asarray(pose)[0, :2].tolist()
+        fallback = search_candidates([specs[0], specs[1]],
+            lambda spec: new_character(rt, character.engine, character.asset_pool, recovery),
+            lambda scratch, spec: generate_candidate(scratch, recovery, spec, rt),
+            lambda values: diagnose(recovery, values), limit=2, stop_on_first=True)
+        frames = fallback.pop('frames')
+        result['recovery'] = fallback
+        recovery_only = frames is not None
+    if recovery_only:
+        chosen = result['recovery']
+        selected = chosen['candidates'][chosen['selected']]
+        metrics = dict(selected['metrics'], recovery_only=True, search=result,
+                       generation_conditions=selected['specification'])
+    elif result['selected'] is None:
+        metrics = dict(accepted=False, reason='No safe stop candidate', search=result)
+    else:
+        selected = result['candidates'][result['selected']]
+        metrics = dict(selected['metrics'], search=result, generation_conditions=selected['specification'])
+    directory = Path(os.environ.get('MOTIONBRICKS_STOP_REPLAY_DIR',
+                                      str(Path(__file__).resolve().parents[1] / 'metrics/stop-replays')))
+    directory.mkdir(parents=True, exist_ok=True)
+    replay['metadata']['search'] = result
+    if frames is not None:
+        replay['metadata']['frames'] = np.asarray(frames).tolist()
+        replay['metadata']['generated_contacts'] = frames.contacts
+        replay['metadata']['generated_support'] = frames.support
+        replay['metadata']['validation_goal'] = np.asarray(pose)[0,:2].tolist() if recovery_only else np.asarray(goal).tolist()
+        replay['metadata']['recovery_only'] = recovery_only
+    (directory / f'stop-{time.time_ns()}.json').write_text(
+        json.dumps(replay, ensure_ascii=False, allow_nan=False), encoding='utf-8')
+    return frames, metrics
+
+
+def _begin_final_stop_legacy(character, pose, goal, rt, wp, destination=None, *, ground):
     """歩行履歴から公式生成し、表示する前に停止区間全体を検証する。"""
     names = list(character.skeleton.joint_names)
     parents = [character.skeleton.joint_parent(i) for i in range(len(names))]
@@ -358,6 +422,8 @@ def _drain(commands: Queue, nav: NavState, cycle=None):
         nav = result.state
         if result.move_to is not None:
             goal = np.array([result.move_to[0], result.move_to[1], 0.0], dtype=np.float32)
+            if cycle is not None:
+                cycle.retarget_settings = cmd.get('retarget_settings', {})
     return nav, goal
 
 
@@ -484,7 +550,7 @@ def worker(commands: Queue, publish):
             )
             if action.begin_final_stop:
                 try:
-                    stop_frames, stop_metrics = _begin_final_stop(character, action.pose, cycle.final_stop_goal, rt, wp, destination=cycle.goal, ground=stop_ground)
+                    stop_frames, stop_metrics = _begin_final_stop(character, action.pose, cycle.final_stop_goal, rt, wp, destination=cycle.goal, ground=stop_ground, control=dict(phase=cycle.phase, speed_mps=root_speed, stop_prediction_m=cycle.stop_prediction_m, destination=None if cycle.goal is None else cycle.goal.tolist(), contacts=dict(left=cycle.plants.left, right=cycle.plants.right), retarget_settings=getattr(cycle,'retarget_settings',{})))
                 except Exception as exc:
                     _sync_pose(character, pose, wp, seed=True)
                     stop_frames, stop_metrics = None, dict(accepted=False, stage='generation', reason=f'Final stop generation failed: {exc}')
@@ -523,6 +589,8 @@ def worker(commands: Queue, publish):
                 character.step(DT, _command(rt, facing, None))
             elif action.pose is not None:
                 _sync_pose(character, action.pose, wp, seed=action.seed)
+                if cycle.phase in ('final_step','stop_retry') and not action.seed:
+                    character.player.record_pose(DT,character.current_pose)
                 if action.seed:
                     character.movement.reset_desired_velocity()
             step_ms = (time.perf_counter() - started_at) * 1000.0

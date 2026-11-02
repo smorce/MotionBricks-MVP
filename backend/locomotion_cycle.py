@@ -355,7 +355,11 @@ class LocomotionCycle:
             frame = self.final_stop_frames[self.final_stop_index]
             self.final_stop_index += 1
             if self.final_stop_index == len(self.final_stop_frames):
-                if np.linalg.norm(frame[0, :2] - self.goal[:2]) <= MICRO_M:
+                if self.final_stop_metrics.get('recovery_only'):
+                    self.phase = STOP_FAILED
+                    self.recovery_pose = frame.copy()
+                    self.stop_failure_reason = 'Safe landing completed without reaching destination'
+                elif np.linalg.norm(frame[0, :2] - self.goal[:2]) <= MICRO_M:
                     self._settle(frame, 'final_stop_complete')
                 else:
                     self.phase = STOP_RETRY

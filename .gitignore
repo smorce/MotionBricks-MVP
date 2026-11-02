@@ -6,6 +6,13 @@ web/node_modules/
 .env.*
 *.log
 
+# 自動探索の途中結果と動画はローカルに保持する。
+metrics/stop-*/
+!metrics/stop-final/
+!metrics/stop-measured/
+metrics/stop-final/*-frames.json
+metrics/probe-frames.npz
+
 # Polyfork: アセットファイル自体の再配布はライセンスで禁止
 ModernRestaurantCafekit/
 
