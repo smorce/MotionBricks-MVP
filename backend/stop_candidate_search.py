@@ -5,12 +5,14 @@ import time
 
 
 def search_candidates(
-    specifications, player_factory, generate, diagnose, limit=24, stop_on_first=False
+    specifications, player_factory, generate, diagnose, limit=24, stop_on_first=False, cancelled=None, deadline=None
 ):
     if not 1 <= limit <= 24:
         raise ValueError("Candidate limit must be between 1 and 24")
     rows, safe, players = [], [], []
     for specification in list(specifications)[:limit]:
+        if (cancelled is not None and cancelled()) or (deadline is not None and time.perf_counter() >= deadline):
+            break
         spec = copy.deepcopy(specification)
         player = player_factory(spec)
         if any(player is prior for prior in players):

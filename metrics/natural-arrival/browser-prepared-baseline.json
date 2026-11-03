@@ -1,0 +1,42 @@
+{
+  "commit": "prepared-baseline",
+  "duration_ms": 60050,
+  "render": {
+    "count": 3559,
+    "p95_ms": 16.89999999999418,
+    "max_ms": 700.0999999999985,
+    "frames_over_100ms": 1
+  },
+  "delivery": {
+    "count": 875,
+    "p95_ms": 28.210800000000745,
+    "gaps_over_100ms": 5,
+    "max_ms": 834.3220000000001
+  },
+  "errors": [],
+  "stop_mode": "prepared",
+  "source_commit": "278e6d4",
+  "warmup_ms": 5000,
+  "relative_clicks": [
+    [
+      2,
+      0
+    ],
+    [
+      0,
+      2
+    ],
+    [
+      0.3,
+      0.02
+    ],
+    [
+      1,
+      1
+    ],
+    [
+      1,
+      -0.03
+    ]
+  ]
+}

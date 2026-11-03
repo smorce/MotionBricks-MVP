@@ -1,0 +1,369 @@
+{
+  "stop_mode": "prepared",
+  "runtime": "Official SOMA / RTX 4090",
+  "direction_regeneration_degrees": 1,
+  "rounds": 3,
+  "passed": true,
+  "runs": [
+    {
+      "delta": [
+        0.735,
+        0.072
+      ],
+      "phase": "settled",
+      "arrival_error_m": 2.1311729077856488e-08,
+      "preview_count": 1,
+      "accepted_stop_count": 1,
+      "bone_lengths_valid": true,
+      "failures": [],
+      "quality": {
+        "arrival_error_m": 2.1311729189716698e-08,
+        "support_slide_m": 0.01167044690772404,
+        "swing_clearance_m": 0.05611807426992896,
+        "knee_angle_step_deg": 15.735929988964646,
+        "root_second_difference_m": 0.0016739800807226474,
+        "final_stance_m": [
+          0.2363157961051045,
+          0.15809191809541995
+        ],
+        "terminal_stable": true
+      }
+    },
+    {
+      "delta": [
+        2.0,
+        0.0
+      ],
+      "phase": "settled",
+      "arrival_error_m": 0.04511564085610001,
+      "preview_count": 1,
+      "accepted_stop_count": 1,
+      "bone_lengths_valid": true,
+      "failures": [],
+      "quality": {
+        "arrival_error_m": 3.6265714660151377e-08,
+        "support_slide_m": 0.009982111152577227,
+        "swing_clearance_m": 0.025247105640923834,
+        "knee_angle_step_deg": 18.4969808870698,
+        "root_second_difference_m": 0.005054260387041397,
+        "final_stance_m": [
+          0.23748441883582624,
+          0.1864871046822449
+        ],
+        "terminal_stable": true
+      }
+    },
+    {
+      "delta": [
+        0.0,
+        2.0
+      ],
+      "phase": "settled",
+      "arrival_error_m": 0.03716229365899376,
+      "preview_count": 1,
+      "accepted_stop_count": 1,
+      "bone_lengths_valid": true,
+      "failures": [],
+      "quality": {
+        "arrival_error_m": 7.213221569749599e-08,
+        "support_slide_m": 0.016277670287981345,
+        "swing_clearance_m": 0.05400478697769351,
+        "knee_angle_step_deg": 19.4875996307164,
+        "root_second_difference_m": 0.0052047992623733,
+        "final_stance_m": [
+          0.2636682729469379,
+          0.23420330236887915
+        ],
+        "terminal_stable": true
+      }
+    },
+    {
+      "delta": [
+        0.3,
+        0.02
+      ],
+      "phase": "settled",
+      "arrival_error_m": 5.135693350345656e-08,
+      "preview_count": 1,
+      "accepted_stop_count": 1,
+      "bone_lengths_valid": true,
+      "failures": [],
+      "quality": {
+        "arrival_error_m": 5.135693350345656e-08,
+        "support_slide_m": 0.004466207165544901,
+        "swing_clearance_m": 0.035790724783929376,
+        "knee_angle_step_deg": 8.866240003857532,
+        "root_second_difference_m": 0.0008225943715861481,
+        "final_stance_m": [
+          0.3473446214157269,
+          0.3464929509777634
+        ],
+        "terminal_stable": true
+      }
+    },
+    {
+      "delta": [
+        1.0,
+        1.0
+      ],
+      "phase": "settled",
+      "arrival_error_m": 0.022761679380746216,
+      "preview_count": 1,
+      "accepted_stop_count": 1,
+      "bone_lengths_valid": true,
+      "failures": [],
+      "quality": {
+        "arrival_error_m": 9.050618453158701e-08,
+        "support_slide_m": 0.006242547702410739,
+        "swing_clearance_m": 0.07570086287175112,
+        "knee_angle_step_deg": 18.6833325801477,
+        "root_second_difference_m": 0.0033189272547809955,
+        "final_stance_m": [
+          0.20952240972983968,
+          0.04498469922215846
+        ],
+        "terminal_stable": true
+      }
+    },
+    {
+      "delta": [
+        0.735,
+        0.072
+      ],
+      "phase": "settled",
+      "arrival_error_m": 1.3615851024501997e-07,
+      "preview_count": 1,
+      "accepted_stop_count": 1,
+      "bone_lengths_valid": true,
+      "failures": [],
+      "quality": {
+        "arrival_error_m": 1.3615851024501997e-07,
+        "support_slide_m": 0.002270284621048183,
+        "swing_clearance_m": 0.09636307310462944,
+        "knee_angle_step_deg": 14.564465342483043,
+        "root_second_difference_m": 0.001600383945239361,
+        "final_stance_m": [
+          0.2617337113984409,
+          0.17118817847055823
+        ],
+        "terminal_stable": true
+      }
+    },
+    {
+      "delta": [
+        2.0,
+        0.0
+      ],
+      "phase": "settled",
+      "arrival_error_m": 0.041634370412076974,
+      "preview_count": 1,
+      "accepted_stop_count": 1,
+      "bone_lengths_valid": true,
+      "failures": [],
+      "quality": {
+        "arrival_error_m": 1.7037662876870087e-07,
+        "support_slide_m": 0.006668944814792236,
+        "swing_clearance_m": 0.04889585973386329,
+        "knee_angle_step_deg": 14.744098522878925,
+        "root_second_difference_m": 0.006066761563831241,
+        "final_stance_m": [
+          0.24256146497975392,
+          0.2348582083111258
+        ],
+        "terminal_stable": true
+      }
+    },
+    {
+      "delta": [
+        0.0,
+        2.0
+      ],
+      "phase": "settled",
+      "arrival_error_m": 0.01135482914399879,
+      "preview_count": 1,
+      "accepted_stop_count": 1,
+      "bone_lengths_valid": true,
+      "failures": [],
+      "quality": {
+        "arrival_error_m": 1.8364355209880517e-07,
+        "support_slide_m": 0.009930673427848319,
+        "swing_clearance_m": 0.051882120229911566,
+        "knee_angle_step_deg": 13.068051490189543,
+        "root_second_difference_m": 0.005607219222576347,
+        "final_stance_m": [
+          0.24803163354854071,
+          0.21799595641875716
+        ],
+        "terminal_stable": true
+      }
+    },
+    {
+      "delta": [
+        0.3,
+        0.02
+      ],
+      "phase": "settled",
+      "arrival_error_m": 1.9168616539313918e-07,
+      "preview_count": 1,
+      "accepted_stop_count": 1,
+      "bone_lengths_valid": true,
+      "failures": [],
+      "quality": {
+        "arrival_error_m": 1.9168616539313918e-07,
+        "support_slide_m": 0.005679732621243384,
+        "swing_clearance_m": 0.0372327775797435,
+        "knee_angle_step_deg": 8.889391178555643,
+        "root_second_difference_m": 0.0008084948821752773,
+        "final_stance_m": [
+          0.33625061519803856,
+          0.33243357687488034
+        ],
+        "terminal_stable": true
+      }
+    },
+    {
+      "delta": [
+        1.0,
+        1.0
+      ],
+      "phase": "settled",
+      "arrival_error_m": 0.02201946553876852,
+      "preview_count": 1,
+      "accepted_stop_count": 1,
+      "bone_lengths_valid": true,
+      "failures": [],
+      "quality": {
+        "arrival_error_m": 2.944812318188978e-07,
+        "support_slide_m": 0.005800673367370326,
+        "swing_clearance_m": 0.07435227087886943,
+        "knee_angle_step_deg": 17.371028058982276,
+        "root_second_difference_m": 0.0035959563310742865,
+        "final_stance_m": [
+          0.203946257645788,
+          0.03443954247945147
+        ],
+        "terminal_stable": true
+      }
+    },
+    {
+      "delta": [
+        0.735,
+        0.072
+      ],
+      "phase": "settled",
+      "arrival_error_m": 3.4435963294531697e-07,
+      "preview_count": 1,
+      "accepted_stop_count": 1,
+      "bone_lengths_valid": true,
+      "failures": [],
+      "quality": {
+        "arrival_error_m": 3.4435963294531697e-07,
+        "support_slide_m": 0.0026422054879828823,
+        "swing_clearance_m": 0.09283014644358195,
+        "knee_angle_step_deg": 14.297887672800165,
+        "root_second_difference_m": 0.0015856442883136561,
+        "final_stance_m": [
+          0.2618526232657001,
+          0.16931968185893279
+        ],
+        "terminal_stable": true
+      }
+    },
+    {
+      "delta": [
+        2.0,
+        0.0
+      ],
+      "phase": "settled",
+      "arrival_error_m": 0.04721535400448914,
+      "preview_count": 1,
+      "accepted_stop_count": 1,
+      "bone_lengths_valid": true,
+      "failures": [],
+      "quality": {
+        "arrival_error_m": 4.7505848598987577e-07,
+        "support_slide_m": 0.007087189818718969,
+        "swing_clearance_m": 0.0513344704579716,
+        "knee_angle_step_deg": 13.105724920455689,
+        "root_second_difference_m": 0.006036129049034172,
+        "final_stance_m": [
+          0.26237732498519983,
+          0.23052173838621068
+        ],
+        "terminal_stable": true
+      }
+    },
+    {
+      "delta": [
+        0.0,
+        2.0
+      ],
+      "phase": "settled",
+      "arrival_error_m": 0.029665839902979135,
+      "preview_count": 1,
+      "accepted_stop_count": 1,
+      "bone_lengths_valid": true,
+      "failures": [],
+      "quality": {
+        "arrival_error_m": 2.406320378588809e-07,
+        "support_slide_m": 0.01333181420241798,
+        "swing_clearance_m": 0.04896122279318332,
+        "knee_angle_step_deg": 15.564861158268984,
+        "root_second_difference_m": 0.00573868844894463,
+        "final_stance_m": [
+          0.24752484958928775,
+          0.23103422490719755
+        ],
+        "terminal_stable": true
+      }
+    },
+    {
+      "delta": [
+        0.3,
+        0.02
+      ],
+      "phase": "settled",
+      "arrival_error_m": 4.959106446514957e-07,
+      "preview_count": 1,
+      "accepted_stop_count": 1,
+      "bone_lengths_valid": true,
+      "failures": [],
+      "quality": {
+        "arrival_error_m": 4.959106446514957e-07,
+        "support_slide_m": 0.005238538674084564,
+        "swing_clearance_m": 0.03260669672572848,
+        "knee_angle_step_deg": 8.491010214183875,
+        "root_second_difference_m": 0.0008021851739669147,
+        "final_stance_m": [
+          0.3399007962294757,
+          0.33128158697843874
+        ],
+        "terminal_stable": true
+      }
+    },
+    {
+      "delta": [
+        1.0,
+        1.0
+      ],
+      "phase": "settled",
+      "arrival_error_m": 0.021446538558721594,
+      "preview_count": 1,
+      "accepted_stop_count": 1,
+      "bone_lengths_valid": true,
+      "failures": [],
+      "quality": {
+        "arrival_error_m": 5.759234418789324e-07,
+        "support_slide_m": 0.00590372076836752,
+        "swing_clearance_m": 0.07484240618426809,
+        "knee_angle_step_deg": 17.346275879585356,
+        "root_second_difference_m": 0.003653674904386695,
+        "final_stance_m": [
+          0.2066396361445278,
+          0.03169669937818327
+        ],
+        "terminal_stable": true
+      }
+    }
+  ]
+}

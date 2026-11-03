@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from collections import deque
 
 import numpy as np
 
@@ -54,6 +55,9 @@ POSE_PENDING = "pose_pending"
 POSE_TRANSITION = "pose_transition"
 POSE_DONE = "pose_done"
 
+ARRIVAL_TOLERANCE_M = 0.05
+MAX_TURN_RATE_RAD_S = 2.0
+
 CONTACT_WAIT_S = 0.75
 STOP_RECOVERY_MAX_S = 4.0
 POSE_WAIT_S = 8.0
@@ -80,7 +84,16 @@ class Action:
 class LocomotionCycle:
     def __init__(self, log=GAIT_LOG) -> None:
         self.log = log
+        self.preview_stops = False
+        self.stop_mode = "legacy"
         self.phase = IDLE
+        self.course_direction = None
+        self.course_position = None
+        self.course_roots = deque(maxlen=12)
+        self.command_direction = None
+        self.route_direction = None
+        self.preview_attempts = 0
+        self.preview_next_s = 0.
         self.goal: np.ndarray | None = None
         self.hold_stance = True
         self.move_id: int | None = None
@@ -143,6 +156,13 @@ class LocomotionCycle:
     def begin_move(self, goal_xy, hold_stance: bool, move_id) -> None:
         # 速度・方向・接地条件を照合できない過去の停止距離は再利用しない。
         self.last_stop_distance_m = 0.0
+        self.course_direction = None
+        self.course_position = None
+        self.course_roots = deque(maxlen=12)
+        self.command_direction = None
+        self.route_direction = None
+        self.preview_attempts = 0
+        self.preview_next_s = 0.
         self.goal = np.array([float(goal_xy[0]), float(goal_xy[1]), 0.0], dtype=np.float64)
         self.hold_stance = bool(hold_stance)
         self.move_id = move_id
@@ -197,6 +217,25 @@ class LocomotionCycle:
         if self.phase != SETTLED or move_id != self.move_id or settle_seq != self.settle_seq or self.collect_checked:
             return False
         self.upper_idle_ready = True
+        return True
+
+    def reject_stop_preview(self, pose):
+        limit = 16 if self.stop_mode == 'prepared' else 3
+        if not self.preview_stops or self.stop_mode not in ('legacy', 'prepared') or self.final_stop_frames or self.preview_attempts >= limit:
+            return False
+        if self.route_direction is None:
+            return False
+        forward = float(np.dot(self.goal[:2]-pose[0, :2], self.route_direction))
+        if forward <= 0.:
+            return False
+        self.preview_attempts += 1
+        interval = 2 if self.stop_mode == 'prepared' else (1 if forward < .15 else 4)
+        self.preview_next_s = self.clock + interval*self._dt
+        self.phase = MOVING
+        self.stop_requested_s = None
+        self.stop_facing = None
+        self.stop_roots.pop('walk_end', None)
+        self._event = ''
         return True
 
     def note_final_stop(self, frames, metrics):
@@ -304,6 +343,7 @@ class LocomotionCycle:
 
         position = pose[0, :2]
         distance = float(np.linalg.norm(self.goal[:2] - position))
+        self._update_course(pose, obs)
         facing = self._facing(pose, obs.get("facing"))
         if self.mode is None:
             self._classify(pose, parents, names, distance)
@@ -320,8 +360,10 @@ class LocomotionCycle:
                 self.stop_failure_reason = self.stop_failure_reason or "Stop recovery exhausted without a validated landing"
             else:
                 self.stop_retry_count += 1
-                self.final_stop_goal = self.goal.copy()
-                self.final_stop_goal[:2] = pose[0, :2] + delta * min(1.0, .25 / remaining)
+                self._lock_stop_course(pose)
+                if self.phase == STOP_RETRY:
+                    forward = np.dot(self.final_stop_goal[:2] - pose[0, :2], self.stop_facing[:2])
+                    self.final_stop_goal[:2] = pose[0, :2] + self.stop_facing[:2] * min(.25, forward)
                 self.phase = FINAL_STEP
                 action = self._action(pose, pose_out=pose, obs=obs)
                 action.begin_final_stop = True
@@ -361,9 +403,7 @@ class LocomotionCycle:
                     self.phase = STOP_FAILED
                     self.recovery_pose = frame.copy()
                     self.stop_failure_reason = 'Safe landing completed without reaching destination'
-                elif self.final_stop_metrics.get('acceptance_basis') == 'experimental_playback_only':
-                    self._settle(frame, 'visual_stop_complete')
-                elif np.linalg.norm(frame[0, :2] - self.goal[:2]) <= MICRO_M:
+                elif np.linalg.norm(frame[0, :2] - self.goal[:2]) <= ARRIVAL_TOLERANCE_M + 1e-9:
                     self._settle(frame, 'final_stop_complete')
                 else:
                     self.phase = STOP_RETRY
@@ -392,12 +432,23 @@ class LocomotionCycle:
             self.step = None
 
         predicted = max(self._flight.values()) * max(0.0, float(obs.get("actual_speed") or 0.0))
-        self.stop_prediction_m = min(self.choice.final_window_m, max(predicted, self.last_stop_distance_m))
+        self.stop_prediction_m = min(self.choice.final_window_m, max(predicted, self.last_stop_distance_m, float(obs.get("actual_speed") or 0.0) * .2))
         stop_at = self.choice.final_window_m if gait_plan.USE_PROCEDURAL_STEP else max(MICRO_M, self.stop_prediction_m)
+        if self.preview_stops and not gait_plan.USE_PROCEDURAL_STEP:
+            stop_at = max(stop_at, .5)
+        if self.route_direction is not None and np.dot(self.goal[:2] - position, self.route_direction) < -ARRIVAL_TOLERANCE_M:
+            self.phase = STOP_FAILED
+            self.recovery_pose = pose.copy()
+            self.stop_failure_reason = "Destination passed before a safe aligned stop"
+            return self._action(pose, pose_out=pose, obs=obs)
         visual = getattr(self, 'visual_selection', None)
         if visual is not None and self.stop_requested_s is None:
-            if visual['status'] in ('matched', 'experimental') and visual['action'] == 'stop':
+            travel = self.course_direction if self.course_direction is not None else facing
+            delta = self.goal[:2] - position
+            lateral = abs(float(travel[0]*delta[1] - travel[1]*delta[0]))
+            if visual['status'] in ('matched', 'experimental') and visual['action'] == 'stop' and lateral <= ARRIVAL_TOLERANCE_M and self.clock >= self.preview_next_s:
                 self.stop_requested_s = self.clock
+                self._lock_stop_course(pose)
                 self.phase = FINAL_STEP
                 action = self._action(pose, pose_out=pose, obs=obs)
                 action.begin_final_stop = True
@@ -409,7 +460,9 @@ class LocomotionCycle:
                 return self._action(pose, pose_out=pose, obs=obs)
             self.mode = 'walk'
             stop_at = 0
-        if self.stop_requested_s is None and self.mode == "walk" and distance > stop_at:
+        travel = self.course_direction if self.course_direction is not None else facing
+        lateral = abs(float(travel[0] * (self.goal[1] - position[1]) - travel[1] * (self.goal[0] - position[0])))
+        if self.stop_requested_s is None and self.mode == "walk" and (distance > stop_at or lateral > ARRIVAL_TOLERANCE_M or self.clock < self.preview_next_s):
             self.phase = DECELERATING if distance <= DECEL_ZONE_M else MOVING
             prime = not self.walk_primed
             self.walk_primed = True
@@ -419,11 +472,12 @@ class LocomotionCycle:
         if self.stop_requested_s is None:
             self.stop_requested_s = self.clock
             self.stop_roots['walk_end'] = pose[0, :2].copy()
-            self.stop_facing = facing.copy()
+            self._lock_stop_course(pose)
             self._event = "stop_requested"
 
         if not gait_plan.USE_PROCEDURAL_STEP:
             if self.mode != 'micro':
+                self._lock_stop_course(pose)
                 self.phase = FINAL_STEP
                 action = self._action(pose, pose_out=pose, obs=obs)
                 action.begin_final_stop = True
@@ -458,7 +512,7 @@ class LocomotionCycle:
             reaches.append(horizontal_reach_m(thigh, shin, drop))
         reach = min(reaches) if reaches else 0.4
         self.choice = classify_distance(distance, reach)
-        self.mode = self.choice.mode
+        self.mode = "walk" if self.choice.mode == "micro" and distance > ARRIVAL_TOLERANCE_M else self.choice.mode
         self.travel_mode = self.choice.mode
         self.budget = 0.0 if self.mode in ("walk", "micro") else distance
         self._capture_ground(pose, parents, names)
@@ -541,6 +595,12 @@ class LocomotionCycle:
     def _settle(self, pose, reason: str) -> None:
         if self.phase == SETTLED and self.settled_pose is not None:
             return
+        if self.goal is not None and np.linalg.norm(pose[0, :2] - self.goal[:2]) > ARRIVAL_TOLERANCE_M + 1e-9:
+            self.phase = STOP_FAILED
+            self.recovery_pose = np.array(pose, copy=True)
+            self.stop_failure_reason = "Landing is outside arrival tolerance"
+            self._event = "stop_failed"
+            return
         self.settled_pose = np.array(pose, dtype=np.float64, copy=True)
         self.stop_roots['collect_end' if reason == 'collect_complete' else 'settled'] = pose[0, :2].copy()
         self.settle_seq += 1
@@ -570,20 +630,51 @@ class LocomotionCycle:
         facing = facing_of(pose[0, 3:7])
         return abs(float(np.dot(feet["left"] - feet["right"], facing)))
 
+    def _lock_stop_course(self, pose):
+        direction = self.course_direction
+        if direction is None:
+            direction = self._facing(pose, None)
+        self.stop_facing = direction.copy()
+        delta = self.goal[:2] - pose[0, :2]
+        self.final_stop_goal = self.goal.copy()
+        self.final_stop_goal[:2] = pose[0, :2] + direction[:2] * np.dot(delta, direction[:2])
+
+    def _update_course(self, pose, obs):
+        if self.stop_facing is not None:
+            return
+        position = pose[0, :2].copy()
+        self.course_roots.append(position)
+        displacement = position - self.course_roots[0]
+        length = float(np.linalg.norm(displacement))
+        elapsed = max(self._dt, (len(self.course_roots)-1)*self._dt)
+        if length > .05 and (self.stop_mode != 'prepared' or length/elapsed > .5):
+            self.course_direction = np.r_[displacement / length, 0.]
+        delta = self.goal[:2] - position
+        distance = float(np.linalg.norm(delta))
+        if distance <= ARRIVAL_TOLERANCE_M:
+            return
+        if self.route_direction is None:
+            self.route_direction = delta / distance
+        forward = float(np.dot(delta, self.route_direction))
+        lateral = delta - self.route_direction * forward
+        steering = self.route_direction + lateral / max(ARRIVAL_TOLERANCE_M, forward)
+        if self.stop_mode == 'prepared' and self.course_direction is not None:
+            desired_course = delta / distance
+            steering += 2. * (desired_course - self.course_direction[:2])
+        desired = float(np.arctan2(steering[1], steering[0]))
+        if self.command_direction is None:
+            self.command_direction = np.r_[delta / distance, 0.]
+        angle = float(np.arctan2(self.command_direction[1], self.command_direction[0]))
+        turn = (desired - angle + np.pi) % (2*np.pi) - np.pi
+        angle += np.clip(turn, -MAX_TURN_RATE_RAD_S*self._dt, MAX_TURN_RATE_RAD_S*self._dt)
+        self.command_direction = np.array([np.cos(angle), np.sin(angle), 0.])
+
     def _facing(self, pose, given) -> np.ndarray:
-        if self.goal is not None:
-            delta = self.goal[:2] - pose[0, :2]
-            length = float(np.linalg.norm(delta))
-            if length > 1e-4:
-                direction = np.array([delta[0] / length, delta[1] / length, 0.0])
-                return direction
-        if given is not None:
-            vec = np.asarray(given, dtype=np.float64)
-            length = float(np.linalg.norm(vec[:2]))
-            if length > 1e-6:
-                return np.array([vec[0] / length, vec[1] / length, 0.0])
-        face = facing_of(pose[0, 3:7])
-        return face
+        if self.stop_facing is not None:
+            return self.stop_facing.copy()
+        if self.command_direction is not None:
+            return self.command_direction.copy()
+        return facing_of(pose[0, 3:7]) if given is None else np.asarray(given, dtype=float).copy()
 
     def _capture_ground(self, pose, parents, names) -> None:
         if self.ground_calibration is None:
@@ -688,7 +779,8 @@ class LocomotionCycle:
             self.log.add(row)
         gait = {
             "event": self._event,
-            "final_stop_metrics": self.final_stop_metrics,
+            "final_stop_metrics": {k: v for k, v in self.final_stop_metrics.items()
+                                   if k in ("accepted", "stage", "reason", "arrival_error_m", "travel_distance_m", "recovery_only")},
             "stop_prediction_m": row['stop_prediction_m'],
             "stop_retry_count": self.stop_retry_count,
             "goal_error_m": row['goal_error_m'],

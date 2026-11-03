@@ -1,0 +1,120 @@
+{
+  "stop_mode": "prepared",
+  "results": [
+    {
+      "delta": [
+        2,
+        0
+      ],
+      "phase": "settled",
+      "mode": "prepared",
+      "error_m": 0.04106124863028526,
+      "reason": ""
+    },
+    {
+      "delta": [
+        0,
+        2
+      ],
+      "phase": "settled",
+      "mode": "prepared",
+      "error_m": 0.031203988939523697,
+      "reason": ""
+    },
+    {
+      "delta": [
+        0.3,
+        0.02
+      ],
+      "phase": "settled",
+      "mode": "prepared",
+      "error_m": 0,
+      "reason": ""
+    },
+    {
+      "delta": [
+        1,
+        1
+      ],
+      "phase": "settled",
+      "mode": "prepared",
+      "error_m": 0.046715084463357925,
+      "reason": ""
+    },
+    {
+      "delta": [
+        1,
+        -0.03
+      ],
+      "phase": "settled",
+      "mode": "prepared",
+      "error_m": 0,
+      "reason": ""
+    }
+  ],
+  "requests": [
+    {
+      "type": "move",
+      "x": 2.0082724448293447,
+      "y": 0.0007649878971278667,
+      "source_sequence": 798,
+      "source_move_id": null,
+      "hold_stance": true,
+      "stop_mode": "prepared"
+    },
+    {
+      "type": "move",
+      "x": 2.0094313621520996,
+      "y": 2.0418098755180836,
+      "source_sequence": 1150,
+      "source_move_id": 1,
+      "hold_stance": true,
+      "stop_mode": "prepared"
+    },
+    {
+      "type": "move",
+      "x": 2.278227376937866,
+      "y": 2.0618260097503662,
+      "source_sequence": 1518,
+      "source_move_id": 2,
+      "hold_stance": true,
+      "stop_mode": "prepared"
+    },
+    {
+      "type": "move",
+      "x": 3.2782273292541504,
+      "y": 3.06182599067688,
+      "source_sequence": 1931,
+      "source_move_id": 3,
+      "hold_stance": true,
+      "stop_mode": "prepared"
+    },
+    {
+      "type": "move",
+      "x": 4.310466051101685,
+      "y": 2.9980182361602785,
+      "source_sequence": 2307,
+      "source_move_id": 4,
+      "hold_stance": true,
+      "stop_mode": "prepared"
+    }
+  ],
+  "commit": "prepared-comparison",
+  "duration_ms": 60026,
+  "render": {
+    "count": 3599,
+    "p95_ms": 16.80000000000291,
+    "max_ms": 17.099999999998545,
+    "frames_over_100ms": 0,
+    "large_gaps": []
+  },
+  "delivery": {
+    "count": 761,
+    "p95_ms": 17.6121000000021,
+    "gaps_over_100ms": 0,
+    "max_ms": 18.47530000000006
+  },
+  "errors": [],
+  "functional_passed": true,
+  "performance_passed": true
+}

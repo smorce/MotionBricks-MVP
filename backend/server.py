@@ -15,6 +15,7 @@ from fastapi.responses import FileResponse
 from cafe_usecases import resolve_usecase
 from d3_router import load_catalog, choose_arrival_pose
 from gait_log import GAIT_LOG
+from timings import TIMINGS
 
 logger = logging.getLogger('roze')
 commands = Queue()
@@ -39,14 +40,22 @@ def pose_summary(poses) -> str:
     return f"root=({x:.2f},{y:.2f}) facing={facing:.0f}deg height={z:.2f}"
 
 async def broadcast(data: dict):
-    latest[data['type']] = data
+    if data['type'] != 'error' or 'source_sequence' not in data:
+        latest[data['type']] = data
     if not clients: return
-    message = json.dumps(data, ensure_ascii=False)
+    with TIMINGS.measure("serialization"):
+        message = json.dumps(data, ensure_ascii=False)
     for ws in tuple(clients):
         try:
-            await ws.send_text(message)
-        except Exception:
+            with TIMINGS.measure("send"):
+                await asyncio.wait_for(ws.send_text(message), timeout=.05)
+        except Exception as exc:
             clients.discard(ws)
+            logger.warning("Frame client disconnected: %s", type(exc).__name__)
+            try:
+                await asyncio.wait_for(ws.close(code=1013), timeout=.05)
+            except Exception:
+                pass
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -73,7 +82,7 @@ app = FastAPI(lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:5188', 'http://127.0.0.1:5188'],
-    allow_methods=['GET'],
+    allow_methods=['GET', 'POST'],
     allow_headers=['*'],
 )
 
@@ -89,6 +98,18 @@ def health():
         'generate_ms': metrics.get('generate_ms'),
         'vrm': VRM_PATH.is_file(),
     }
+
+@app.get('/performance')
+def performance():
+    generation = latest.get('generation_metrics', {})
+    return dict(stages=TIMINGS.summary(), generation=generation, replay_save_ms=generation.get('replay_save_ms'),
+                replay_dropped=generation.get('replay_dropped'), replay_failed=generation.get('replay_failed'),
+                render=latest.get('render_metrics'))
+
+@app.post('/performance/render')
+def render_performance(data: dict):
+    latest['render_metrics'] = {name: data.get(name) for name in ('render_interval', 'render_duration', 'scene_ready')}
+    return {'ok': True}
 
 @app.get('/roze.vrm')
 def roze_vrm():
@@ -160,7 +181,8 @@ async def ws_endpoint(ws: WebSocket):
                 request_numbers[ws] = move_id
                 commands.put({'type':'move','x':float(msg['x']),'y':float(msg['y']),'move_id':move_id, 'hold_stance':msg.get('hold_stance') is True,
                               'retarget_settings':msg.get('retarget_settings',{}),
-                              'stop_mode':msg.get('stop_mode')})
+                              'stop_mode':msg.get('stop_mode'), 'source_sequence':msg.get('source_sequence'),
+                              'source_move_id':msg.get('source_move_id')})
                 asyncio.create_task(route_and_submit(ws, msg, move_id))
     except WebSocketDisconnect:
         pass

@@ -3,12 +3,13 @@ import numpy as np
 from visual_stop_selector import select_stop, travel_relative_history
 
 PREPARE_M = 1.2
-FALLBACK_M = .6
+FALLBACK_M = .9
 
 
 def select_prepared_stop(state, remaining_m, candidates):
     a_candidates = [r for r in candidates if r['specification']['mode'] == 'A']
-    strict = select_stop(state, remaining_m, a_candidates)
+    current = travel_relative_history(state)
+    strict = select_stop(state, remaining_m, a_candidates, current_history=current)
     if strict['status'] == 'matched':
         if remaining_m <= strict['x_m'] + .12:
             strict['action'] = 'stop'
@@ -16,13 +17,16 @@ def select_prepared_stop(state, remaining_m, candidates):
         strict['preparation_active'] = remaining_m <= PREPARE_M
         strict['distance_delta_m'] = remaining_m - strict['x_m']
         return strict
-    current = travel_relative_history(state)
     if current is None:
         return strict
 
     def proximity(row):
         saved = row['context']
-        history = travel_relative_history(saved)
+        history = row.get('reference_history')
+        if history is None:
+            history = travel_relative_history(saved)
+        if history is None:
+            return float('inf')
         qa, qb = current[..., 3:], history[..., 3:]
         dots = np.sum(qa*qb, axis=-1) / np.maximum(1e-9, np.linalg.norm(qa, axis=-1)*np.linalg.norm(qb, axis=-1))
         rotation = float(np.sqrt(np.mean((2*np.arccos(np.clip(abs(dots), 0, 1)))**2)))
@@ -34,8 +38,9 @@ def select_prepared_stop(state, remaining_m, candidates):
 
     row = min(a_candidates, key=proximity)
     score = proximity(row)
-    stopping = remaining_m <= FALLBACK_M
-    x = min(FALLBACK_M, remaining_m)
+    stopping_distance = min(PREPARE_M, FALLBACK_M + max(0., state['speed_mps'])*.15)
+    stopping = remaining_m <= stopping_distance
+    x = min(stopping_distance, remaining_m)
     start = np.asarray(state['root'])[:2] + np.asarray(state['direction'])[:2]*max(0, remaining_m-x)
     return dict(status='experimental' if stopping else 'preparing', action='stop' if stopping else 'walk',
                 preparation_active=remaining_m <= PREPARE_M, human_rating='unknown',

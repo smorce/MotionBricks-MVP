@@ -9,6 +9,40 @@ from final_stop import build_stop_target, validate_stop_motion, validate_stop_pr
 
 
 class FinalStopTests(unittest.TestCase):
+    def test_f001_can_finish_inside_five_cm_without_a_two_cm_recovery_constraint(self):
+        pose, parents, names = standing_pose()
+        frames = np.repeat(pose[None], 4, axis=0)
+        frames[:, 0, 0] = [.3, .7, 1.03, 1.]
+        self.assertIn('passed destination', validate_stop_progress(frames, pose, [1., 0], None, parents, names))
+        self.assertEqual(validate_stop_progress(frames, pose, [1., 0], None, parents, names,
+                                               destination_margin_m=.05), '')
+        frames[2, 0, :2] = [1.045, .03]
+        self.assertIn('passed destination', validate_stop_progress(frames, pose, [1., 0], None, parents, names,
+                                                                   destination_margin_m=.05))
+
+    def test_existing_flight_at_f001_connection_counts_as_swing_clearance(self):
+        rest, parents, names = standing_pose()
+        ground = calibrate_stop_ground(rest, parents, names)
+        original = rest.copy(); original[0, 2] += .03
+        frames = np.repeat(rest[None], 6, axis=0)
+        frames[:, 0, 0] = [.01, .03, .05, .06, .06, .06]
+        frames[:, 0, 2] += [.02, .01, 0., 0., 0., 0.]
+        result = validate_stop_motion(frames, original, [.06, 0], parents, names, ground)
+        self.assertTrue(result['checks']['swing']['passed'])
+        self.assertAlmostEqual(result['checks']['swing']['lift_m']['right'], .03)
+
+    def test_near_goal_does_not_allow_a_large_pass_and_return(self):
+        pose, parents, names = standing_pose()
+        frames = np.repeat(pose[None], 4, axis=0)
+        frames[:, 0, 0] = [.02, .3, .1, .04]
+        self.assertIn('passed destination', validate_stop_progress(frames, pose, [.04, 0], None, parents, names))
+
+    def test_unpinned_f001_progress_does_not_require_one_fixed_support(self):
+        pose, parents, names = standing_pose()
+        frames = np.repeat(pose[None], 4, axis=0)
+        frames[:, 0, 0] = [.01, .02, .03, .04]
+        self.assertEqual(validate_stop_progress(frames, pose, [.04, 0], None, parents, names), '')
+
     def test_support_diagnostics_keep_airborne_and_later_frames(self):
         from final_stop import support_motion_metrics
         pose, parents, names = standing_pose()
@@ -273,3 +307,16 @@ class FinalStopTests(unittest.TestCase):
                 _begin_final_stop(character,pose,[0,0],rt,wp, ground=calibrate_stop_ground(pose, parents, names))
             restore.assert_called_once()
         self.assertEqual(character.clear_ik_pins.call_count, 2)
+
+
+class RotationDiagnosticsTests(unittest.TestCase):
+    def test_rotation_failure_identifies_joint_and_boundary_frame(self):
+        pose, parents, names = standing_pose()
+        frames = np.repeat(pose[None], 4, axis=0)
+        index = names.index('LeftFoot')
+        frames[1:, index, 3:7] = [0., 0., np.sin(.5), np.cos(.5)]
+        metrics = validate_stop_motion(frames, pose, [0, 0], parents, names,
+                                       calibrate_stop_ground(pose, parents, names))
+        self.assertEqual(metrics['rotation_peak']['joint'], 'LeftFoot')
+        self.assertEqual(metrics['rotation_peak']['frame'], 1)
+        self.assertAlmostEqual(metrics['rotation_peak']['angle_rad'], 1.)

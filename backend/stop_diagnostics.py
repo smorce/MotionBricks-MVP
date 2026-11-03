@@ -145,7 +145,8 @@ def diagnose_stop(
         else "Official confidence >= 0.5 and calibrated height; support always checked",
     )
     landed = all(min(heights[-1][s].values()) <= 0.04 for s in ("left", "right"))
-    lift = {s: max(min(row[s].values()) for row in heights) for s in ("left", "right")}
+    lift = {s: max(min(row[s][p][2] - floor for p in ('ankle', 'toe')) for row in points)
+            for s in ("left", "right")}
     moving = {
         s: max(
             np.linalg.norm(row[s]["ankle"][:2] - points[0][s]["ankle"][:2])

@@ -1,0 +1,82 @@
+{
+  "results": [
+    {
+      "name": "right-offset",
+      "phase": "settled",
+      "error_m": 2.8610229491077277e-8,
+      "reason": "",
+      "underflows": 0
+    },
+    {
+      "name": "left-offset",
+      "phase": "settled",
+      "error_m": 2.8610229491077277e-8,
+      "reason": "",
+      "underflows": 0
+    },
+    {
+      "name": "long",
+      "phase": "settled",
+      "error_m": 0.0037009190059429397,
+      "reason": "",
+      "underflows": 0
+    },
+    {
+      "name": "reclick",
+      "phase": "stop_failed",
+      "error_m": 0.036821617387053814,
+      "reason": "Stop trajectory passed destination or moved backward",
+      "underflows": 0,
+      "source_join_m": 0.0014201324962290361
+    }
+  ],
+  "errors": [],
+  "requests": [
+    {
+      "type": "move",
+      "x": 5.020308017730713,
+      "y": 3.0955614757537844,
+      "source_sequence": 9221,
+      "source_move_id": 5,
+      "hold_stance": true,
+      "stop_mode": "prepared"
+    },
+    {
+      "type": "move",
+      "x": 6.020308017730713,
+      "y": 3.1255615043640135,
+      "source_sequence": 9396,
+      "source_move_id": 6,
+      "hold_stance": true,
+      "stop_mode": "prepared"
+    },
+    {
+      "type": "move",
+      "x": 10.020308017730713,
+      "y": 3.125561475753784,
+      "source_sequence": 9524,
+      "source_move_id": 7,
+      "hold_stance": true,
+      "stop_mode": "prepared"
+    },
+    {
+      "type": "move",
+      "x": 14.020183563232422,
+      "y": 3.129260301589966,
+      "source_sequence": 9754,
+      "source_move_id": 8,
+      "hold_stance": true,
+      "stop_mode": "prepared"
+    },
+    {
+      "type": "move",
+      "x": 10.020685195922852,
+      "y": 5.129378318786621,
+      "source_sequence": 9762,
+      "source_move_id": 9,
+      "hold_stance": true,
+      "stop_mode": "prepared"
+    }
+  ],
+  "passed": false
+}

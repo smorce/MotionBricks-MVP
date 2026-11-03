@@ -19,6 +19,10 @@ class GaitLog:
             if len(self._rows) > self.limit:
                 self._rows = self._rows[-self.limit :]
 
+    def last(self):
+        with self._lock:
+            return self._rows[-1] if self._rows else None
+
     def snapshot(self) -> list[dict]:
         with self._lock:
             return list(self._rows)

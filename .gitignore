@@ -46,3 +46,16 @@ metrics/phase9/*.json
 !metrics/phase9/review-template.json
 !metrics/phase9/human-reviews.json
 metrics/phase9/page@*.webm
+
+# 到着・再生の試行ログはローカルに保持し、最終検証だけ共有する。
+metrics/natural-arrival/*
+!metrics/natural-arrival/browser-prepared-baseline.json
+!metrics/natural-arrival/browser-prepared-comparison.json
+!metrics/natural-arrival/browser-after.json
+!metrics/natural-arrival/scenarios.json
+!metrics/natural-arrival/model-verification.json
+!metrics/natural-arrival/verification-summary.json
+!metrics/natural-arrival/final-capture.json
+!metrics/natural-arrival/final-front.png
+!metrics/natural-arrival/final-side.png
+!metrics/natural-arrival/final-45deg.png

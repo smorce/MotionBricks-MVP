@@ -13,12 +13,11 @@ import os
 import sys
 import time
 from dataclasses import replace
-from concurrent.futures import ThreadPoolExecutor
-from threading import Event
 from pathlib import Path
 from queue import Empty, Queue
 
 import numpy as np
+from timings import TIMINGS
 
 from locomotion_cycle import IDLE, LocomotionCycle, POSE_DONE, SETTLED
 from quats import RX90, quat_mul, quat_to_mat
@@ -100,13 +99,19 @@ def _sync_pose(character, pose, wp, seed: bool = False) -> None:
     current = character.current_pose.numpy()
     current.reshape(-1, 7)[:] = flat
     character.current_pose.assign(current)
+    character.character_ground_position[:2] = flat[0, :2]
+    character.character_ground_position[2] = 0.
     if seed:
+        character.actual_velocity.fill(0.)
         character.player.seed_history_from_pose(character.current_pose)
 
 
 def _prime_walk(character, facing: np.ndarray) -> None:
     """加速スプリングの低速域は Idle ブレンドなので、歩行開始時だけ Walk 速度に置く。"""
-    mode = character.state_machine.active_locomotion_state.active_mode
+    locomotion = character.state_machine.active_locomotion_state
+    locomotion.settings = replace(locomotion.settings, direction_regeneration_dot=float(np.cos(np.deg2rad(1))))
+    locomotion._force_regeneration = True
+    mode = locomotion.active_mode
     speed = float(mode.default_speed)
     direction = np.asarray(facing, dtype=np.float32).copy()
     direction[2] = 0.0
@@ -115,6 +120,7 @@ def _prime_walk(character, facing: np.ndarray) -> None:
         return
     direction[:2] /= norm
     movement = character.movement
+    movement.settings = replace(movement.settings, velocity_direction_halflife=.05)
     movement.desired_speed = speed
     movement.desired_speed_rate = 0.0
     movement.desired_velocity_direction[:] = direction
@@ -248,24 +254,38 @@ def _begin_collect(character, planted, swing, rt, wp, facing, cancelled=None):
     return (frames if metrics['accepted'] else None), metrics
 
 
-def _begin_final_stop(character, pose, goal, rt, wp, destination=None, *, ground, control=None):
+def live_candidate_specs(preferred):
+    from stop_runtime import candidate_specs
+    # 実モデルで平坦な目標より到達しやすかった、支持脚を曲げる候補から検証する。
+    return sorted(candidate_specs(preferred), key=lambda spec: (
+        spec['mode'] != 'staged', spec['tokens'] != 8, -spec['root_lower'],
+        spec['support'] != preferred))
+
+
+def _begin_final_stop(character, pose, goal, rt, wp, destination=None, *, ground, control=None, cancelled=None):
     """ライブの再生履歴を変更せず、独立再生器で少数の候補を検証する。"""
     if not hasattr(character, 'asset_pool'):
         return _begin_final_stop_legacy(character, pose, goal, rt, wp, destination, ground=ground)
     from stop_replay import capture_replay
     from stop_runtime import new_character, candidate_specs, refinement_specs, generate_candidate, diagnose
     from stop_candidate_search import search_candidates
-    import json
     replay = capture_replay(character, goal, ground, control=control)
     preferred = replay['metadata']['support']
-    specs = candidate_specs(preferred)
+    specs = live_candidate_specs(preferred) if cancelled is not None else candidate_specs(preferred)
+    deadline = time.perf_counter() + 2.0 if cancelled is not None else None
     def diagnose_progress(frames):
-        metrics = diagnose(replay, frames)
+        with TIMINGS.measure("diagnostics"):
+            metrics = diagnose(replay, frames)
         if metrics['accepted']:
             data = replay['metadata']
             reason = validate_stop_progress(
                 frames, pose, goal if destination is None else destination,
                 frames.support, data['parents'], data['names'])
+            original_goal = goal if destination is None else destination
+            error = float(np.linalg.norm(frames[-1][0, :2] - np.asarray(original_goal)[:2]))
+            metrics['arrival_error_m'] = error
+            if error > .05 + 1e-9:
+                reason = 'Stop missed original destination'
             if reason:
                 metrics.update(accepted=False, reason=reason)
         return metrics
@@ -273,14 +293,14 @@ def _begin_final_stop(character, pose, goal, rt, wp, destination=None, *, ground
     result = search_candidates(specs,
         lambda spec: new_character(rt, character.engine, character.asset_pool, replay),
         lambda scratch, spec: generate_candidate(scratch, replay, spec, rt),
-        diagnose_progress, limit=24, stop_on_first=True)
+        diagnose_progress, limit=24, stop_on_first=True, cancelled=cancelled, deadline=deadline)
     frames = result.pop('frames')
     if frames is None:
         refined_specs = refinement_specs(preferred)
         refined = search_candidates(refined_specs,
             lambda spec:new_character(rt,character.engine,character.asset_pool,replay),
             lambda scratch,spec:generate_candidate(scratch,replay,spec,rt),
-            diagnose_progress,limit=24,stop_on_first=True)
+            diagnose_progress,limit=24,stop_on_first=True, cancelled=cancelled, deadline=deadline)
         frames=refined.pop('frames')
         if refined['selected'] is not None:
             result['selected']=len(result['candidates'])+refined['selected']
@@ -295,14 +315,15 @@ def _begin_final_stop(character, pose, goal, rt, wp, destination=None, *, ground
         fallback = search_candidates(specs,
             lambda spec: new_character(rt, character.engine, character.asset_pool, recovery),
             lambda scratch, spec: generate_candidate(scratch, recovery, spec, rt),
-            lambda values: diagnose(recovery, values), limit=24, stop_on_first=True)
+            lambda values: diagnose(recovery, values), limit=24, stop_on_first=True, cancelled=cancelled, deadline=deadline)
         frames = fallback.pop('frames')
         result['recovery'] = fallback
         recovery_only = frames is not None
     if recovery_only:
         chosen = result['recovery']
         selected = chosen['candidates'][chosen['selected']]
-        metrics = dict(selected['metrics'], recovery_only=True, search=result,
+        error = float(np.linalg.norm(frames[-1][0, :2] - np.asarray(goal if destination is None else destination)[:2]))
+        metrics = dict(selected['metrics'], recovery_only=error > .05 + 1e-9, arrival_error_m=error, search=result,
                        generation_conditions=selected['specification'])
     elif result['selected'] is None:
         metrics = dict(accepted=False, reason='No safe stop candidate', search=result)
@@ -314,16 +335,15 @@ def _begin_final_stop(character, pose, goal, rt, wp, destination=None, *, ground
         if frames is not None else 0.0)
     directory = Path(os.environ.get('MOTIONBRICKS_STOP_REPLAY_DIR',
                                       str(Path(__file__).resolve().parents[1] / 'metrics/stop-replays')))
-    directory.mkdir(parents=True, exist_ok=True)
     replay['metadata']['search'] = result
     if frames is not None:
-        replay['metadata']['frames'] = np.asarray(frames).tolist()
+        replay['metadata']['frames'] = np.asarray(frames).copy()
         replay['metadata']['generated_contacts'] = frames.contacts
         replay['metadata']['generated_support'] = frames.support
         replay['metadata']['validation_goal'] = np.asarray(pose)[0,:2].tolist() if recovery_only else np.asarray(goal).tolist()
-        replay['metadata']['recovery_only'] = recovery_only
-    (directory / f'stop-{time.time_ns()}.json').write_text(
-        json.dumps(replay, ensure_ascii=False, allow_nan=False), encoding='utf-8')
+        replay['metadata']['recovery_only'] = metrics.get('recovery_only', False)
+    from replay_writer import WRITER
+    WRITER.submit(directory / f'stop-{time.time_ns()}.json', replay)
     return frames, metrics
 
 
@@ -404,20 +424,6 @@ def _begin_final_stop_legacy(character, pose, goal, rt, wp, destination=None, *,
 
 
 
-def _collect_job(planted, swing, facing, cancelled):
-    """推論専用エンジンを使い、ライブ歩行とGPU状態を共有しない。"""
-    rt = _load_runtime()
-    wp = rt["wp"]
-    wp.init()
-    wp.set_device("cuda:0")
-    assets = rt["load_rig_assets"](rt["ModelRig"].SOMA)
-    pool = rt["SmartPrimitiveAssetPool"](assets.clip_registry, assets.reference_pose, assets.model_to_runtime)
-    engine = rt["MotionBricksSOMAEngine"](rt["SOMA_N1_FP32_ONNX_PATH"], model_to_runtime=assets.model_to_runtime)
-    with engine, wp.ScopedStream(engine.stream):
-        character = rt["SOMACharacter"](engine, asset_pool=pool, modes=rt["DEFAULT_LOCOMOTION_MODES"],
-            idle_paths=(rt["DEFAULT_IDLE_CLIPS"][0],), crouch_idle_paths=rt["DEFAULT_CROUCH_IDLE_CLIPS"])
-        return _begin_collect(character, planted, swing, rt, wp, facing, cancelled)
-
 
 def _drain(commands: Queue, nav: NavState, cycle=None):
     goal = None
@@ -438,12 +444,19 @@ def _drain(commands: Queue, nav: NavState, cycle=None):
         if result.move_to is not None:
             goal = np.array([result.move_to[0], result.move_to[1], 0.0], dtype=np.float32)
             if cycle is not None:
+                cycle.resume_checkpoint = cmd.get("_checkpoint")
                 cycle.retarget_settings = cmd.get('retarget_settings', {})
-                if cmd.get('stop_mode') in ('visual', 'prepared', 'legacy'):
+                if cmd.get('stop_mode') in ('visual', 'prepared'):
                     cycle.stop_mode = cmd['stop_mode']
                 else:
-                    cycle.stop_mode = getattr(cycle, 'default_stop_mode', 'legacy')
+                    cycle.stop_mode = getattr(cycle, 'default_stop_mode', 'prepared')
     return nav, goal
+
+
+def _stream_selection(selection):
+    if selection is None:
+        return None
+    return {name: value for name, value in selection.items() if name not in ('state_features', 'review')}
 
 
 def _command(rt, facing: np.ndarray, movement: np.ndarray | None):
@@ -454,8 +467,127 @@ def _command(rt, facing: np.ndarray, movement: np.ndarray | None):
     )
 
 
+def _produce_frames(pending, output, epoch, closed):
+    from frame_pipeline import ProcessOutput
+    proxy = ProcessOutput(output, epoch, closed)
+    try:
+        _generation_worker(pending, lambda message: output.put(('direct', message)), proxy)
+    except BaseException as exc:
+        output.put(('direct', {'type': 'error', 'message': str(exc)}))
+    finally:
+        from replay_writer import WRITER
+        WRITER.flush()
+
+
 def worker(commands: Queue, publish):
-    """GPU と Warp は、この長寿命スレッドの中だけに置く。"""
+    from frame_pipeline import FramePipeline, TERMINAL, CheckpointHistory
+    import multiprocessing
+    from frame_clock import FrameClock
+    clock = FrameClock()
+    timer = None
+    if sys.platform == "win32":
+        import ctypes
+        timer = ctypes.WinDLL("winmm")
+        timer.timeBeginPeriod(1)
+    from stop_phase import apply_nav_command
+    pipeline = FramePipeline(capacity=240, prefill=180)
+    context = multiprocessing.get_context('spawn')
+    pending = context.Queue()
+    output = context.Queue(maxsize=120)
+    epoch = context.Value('q', -1)
+    closed = context.Event()
+    state = NavState()
+    last_checkpoint = None
+    checkpoints = CheckpointHistory()
+    sequence = 0
+    last_delivery = None
+    process = context.Process(target=_produce_frames, args=(pending, output, epoch, closed), name='motion-inference', daemon=True)
+    process.start()
+    next_tick = time.perf_counter()
+    try:
+        while True:
+            while not commands.empty():
+                command = commands.get_nowait()
+                resume_checkpoint = last_checkpoint
+                if command.get('type') == 'move' and command.get('source_sequence') is not None:
+                    resume_checkpoint = checkpoints.resolve(command['source_sequence'], command.get('source_move_id'))
+                    if resume_checkpoint is None:
+                        publish({'type':'error','message':'Move source frame is no longer available',
+                                 'source_sequence':command['source_sequence'], 'source_move_id':command.get('source_move_id'),
+                                 'latest_sequence':sequence-1})
+                        continue
+                result = apply_nav_command(state, command)
+                if result.quit:
+                    pending.put(command)
+                    return
+                state = result.state
+                if result.move_to is not None:
+                    epoch.value = state.move_id
+                    pipeline.begin(state.move_id)
+                    command = dict(command, _checkpoint=resume_checkpoint)
+                pending.put(command)
+            intake_started = time.perf_counter()
+            for _ in range(4):
+                if len(pipeline.frames) >= pipeline.capacity or (pipeline.frames and pipeline.frames[-1][0].get('phase') in TERMINAL):
+                    break
+                try:
+                    generated = output.get_nowait()
+                except Empty:
+                    break
+                if generated[0] == 'direct':
+                    publish(generated[1])
+                    continue
+                identity, message, checkpoint, events, timing = generated
+                if identity != pipeline.epoch:
+                    continue
+                if timing is not None:
+                    publish(dict(type='generation_metrics', **timing))
+                for event in events:
+                    pipeline.event(event, identity)
+                pipeline.offer(message, checkpoint, identity)
+            TIMINGS.record("frame_intake", (time.perf_counter()-intake_started)*1000)
+            if not process.is_alive() and output.empty():
+                raise RuntimeError('Inference process stopped')
+            packet = pipeline.take()
+            if packet is not None:
+                frame, last_checkpoint, events = packet
+                from gait_log import GAIT_LOG
+                row = frame.pop('_log_row', None)
+                if row is not None:
+                    GAIT_LOG.add(row)
+                checkpoints.add(sequence, frame.get('gait', {}).get('move_id'), last_checkpoint)
+                frame['sequence'] = sequence
+                frame['simulation_time'] = sequence * DT
+                frame['pipeline_underflows'] = pipeline.underflows
+                sequence += 1
+                now = time.perf_counter()
+                if last_delivery is not None:
+                    TIMINGS.record("delivery_interval", (now-last_delivery)*1000)
+                last_delivery = now
+                publish(frame)
+                for event in events:
+                    publish(event)
+            next_tick += DT
+            delay = next_tick - time.perf_counter()
+            if delay > 0:
+                clock.wait(next_tick)
+            else:
+                next_tick = time.perf_counter()
+    finally:
+        clock.close()
+        pipeline.close()
+        pending.put({'type': 'quit'})
+        closed.set()
+        process.join(timeout=3)
+        if process.is_alive():
+            process.terminate()
+            process.join(timeout=3)
+        if timer is not None:
+            timer.timeEndPeriod(1)
+
+
+def _generation_worker(commands: Queue, publish, pipeline):
+    """GPU と Warp は、この単一推論プロセスだけが所有する。"""
     rt = _load_runtime()
     wp = rt["wp"]
     wp.init()
@@ -499,10 +631,12 @@ def worker(commands: Queue, publish):
         )
         nav = NavState()
         cycle = LocomotionCycle()
+        cycle.preview_stops = True
         from visual_stop_runtime import VisualStopRuntime
-        visual_stop = VisualStopRuntime() if os.environ.get('MOTIONBRICKS_VISUAL_STOP') == '1' else None
+        visual_stop = VisualStopRuntime()
+        visual_stop.prepared = os.environ.get('MOTIONBRICKS_VISUAL_STOP') != '1'
         visual_stop_cache = visual_stop
-        cycle.stop_mode = 'visual' if visual_stop else 'legacy'
+        cycle.stop_mode = 'prepared' if visual_stop.prepared else 'visual'
         cycle.default_stop_mode = cycle.stop_mode
         cycle.ground_calibration = stop_ground
         comparison_idle = None
@@ -514,19 +648,41 @@ def worker(commands: Queue, publish):
         frames = 0
         tick = 0
         report_at = time.monotonic()
-        next_tick = time.monotonic()
         last_root = None
-        collect_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="collect-gpu")
-        collect_job = None
-        collect_cancel = Event()
+        def emit(message):
+            if message['type'] == 'frame':
+                recorder = character.player.motion_history
+                checkpoint = dict(pose=character.current_pose.numpy().reshape((-1, 7)).copy(),
+                                  history=recorder.poses.numpy().copy(),
+                                  delta_times=list(recorder.delta_times),
+                                  contacts=character.current_foot_contacts.numpy().copy(),
+                                  movement={name: value.copy() if isinstance(value, np.ndarray) else value
+                                            for name, value in vars(character.movement).items()
+                                            if isinstance(value, (np.ndarray, float, int))})
+                from gait_log import GAIT_LOG
+                row = GAIT_LOG.last()
+                if row is not None:
+                    message['_log_row'] = dict(row, final_stop_metrics=message['gait']['final_stop_metrics'])
+                with TIMINGS.measure("producer_backpressure"):
+                    pipeline.offer(message, checkpoint, cycle.move_id)
+            else:
+                pipeline.event(message, cycle.move_id)
+
         while True:
             drained = _drain(commands, nav, cycle)
             if drained is None:
-                collect_cancel.set()
-                collect_executor.shutdown(wait=False, cancel_futures=True)
                 return
             nav, moved = drained
             if moved is not None:
+                checkpoint = getattr(cycle, 'resume_checkpoint', None)
+                if checkpoint is not None:
+                    from stop_replay import restore_history
+                    _sync_pose(character, checkpoint['pose'], wp, seed=True)
+                    restore_history(character, dict(history=checkpoint['history'], delta_times=checkpoint['delta_times'],
+                                                   metadata=dict(contacts=checkpoint['contacts'])))
+                    for name, value in checkpoint.get('movement', {}).items():
+                        setattr(character.movement, name, value.copy() if isinstance(value, np.ndarray) else value)
+                    last_root = None
                 if cycle.stop_mode in ('visual', 'prepared') and visual_stop_cache is None:
                     visual_stop_cache = VisualStopRuntime()
                 visual_stop = visual_stop_cache if cycle.stop_mode in ('visual', 'prepared') else None
@@ -540,30 +696,10 @@ def worker(commands: Queue, publish):
                     _sync_pose(character, np.asarray(initial['pose']), wp)
                     restore_history(character, initial)
                     last_root = None
-                collect_cancel.set()
-                if collect_job is not None:
-                    collect_job[0].cancel()
-                    collect_job = None
                 goal = moved
                 cycle.begin_move(moved, nav.hold_stance, nav.move_id)
             if not nav.hold_stance and nav.target_pose_id != cycle.target_pose_id:
                 cycle.note_pose_choice(nav.target_pose_id)
-            if collect_job is not None and cycle.phase != "collect_preparing":
-                collect_cancel.set()
-                collect_job[0].cancel()
-                collect_job = None
-            if collect_job is not None and collect_job[0].done():
-                future, move_id, settle_seq = collect_job
-                collect_job = None
-                try:
-                    collect_frames, metrics = future.result()
-                except Exception as exc:
-                    collect_frames, metrics = None, dict(accepted=False, reason=f"Collect generation failed: {exc}")
-                if cycle.stage_collect(collect_frames, metrics, move_id, settle_seq):
-                    publish({"type": "collect_candidate", "move_id": move_id, "settle_seq": settle_seq,
-                             "frames": [frame.tolist() for frame in collect_frames], "metrics": metrics})
-                elif metrics.get("reason"):
-                    print(f"Collect rejected: {metrics['reason']}", flush=True)
             pose = character.current_pose.numpy().reshape((-1, 7)).copy()
             playback = character._playback_source.name
             contacts_available = playback != "CLIP" and cycle.phase in (IDLE, "moving", "decelerating", "waiting_for_foot_contact", "contact_recovery")
@@ -571,7 +707,8 @@ def worker(commands: Queue, publish):
             if last_root is not None:
                 root_speed = float(np.linalg.norm(pose[0, :2] - last_root) / DT)
             started_at = time.perf_counter()
-            cycle.visual_selection = visual_stop.observe(character, cycle.goal, stop_ground) if visual_stop and cycle.goal is not None and cycle.stop_requested_s is None else None
+            with TIMINGS.measure("candidate_match"):
+                cycle.visual_selection = visual_stop.observe(character, cycle.goal, stop_ground) if visual_stop and cycle.goal is not None and cycle.stop_requested_s is None else None
             action = cycle.tick(
                 {
                     "pose": pose,
@@ -591,22 +728,32 @@ def worker(commands: Queue, publish):
                 np.array([1.0, 0.0, 0.0], dtype=np.float32),
             )
             if action.begin_final_stop:
+                generation_start = time.perf_counter()
                 try:
                     if visual_stop:
-                        stop_frames, stop_metrics = visual_stop.generate(character, cycle.goal, stop_ground, rt)
-                        cycle.note_final_stop(stop_frames, stop_metrics)
-                        character.movement.reset_desired_velocity()
-                        continue
-                    stop_control = dict(move_id=cycle.move_id, settle_seq=cycle.settle_seq,
-                                        retry_count=cycle.stop_retry_count,
-                                        last_stop_distance_m=cycle.last_stop_distance_m,
-                                        facing=facing.tolist())
-                    stop_frames, stop_metrics = _begin_final_stop(character, action.pose, cycle.final_stop_goal, rt, wp, destination=cycle.goal, ground=stop_ground, control=dict(**stop_control, phase=cycle.phase, speed_mps=root_speed, stop_prediction_m=cycle.stop_prediction_m, destination=None if cycle.goal is None else cycle.goal.tolist(), contacts=dict(left=cycle.plants.left, right=cycle.plants.right), retarget_settings=getattr(cycle,'retarget_settings',{})))
+                        stop_frames, stop_metrics = visual_stop.generate(character, cycle.final_stop_goal, stop_ground, rt, destination=cycle.goal)
+                    else:
+                        stop_control = dict(move_id=cycle.move_id, settle_seq=cycle.settle_seq,
+                                            source_frame=tick, retry_count=cycle.stop_retry_count,
+                                            last_stop_distance_m=cycle.last_stop_distance_m,
+                                            facing=facing.tolist())
+                        stop_frames, stop_metrics = _begin_final_stop(character, action.pose, cycle.final_stop_goal, rt, wp, destination=cycle.goal, ground=stop_ground, cancelled=lambda: not pipeline.is_current(cycle.move_id), control=dict(**stop_control, phase=cycle.phase, speed_mps=root_speed, stop_prediction_m=cycle.stop_prediction_m, destination=None if cycle.goal is None else cycle.goal.tolist(), contacts=dict(left=cycle.plants.left, right=cycle.plants.right), retarget_settings=getattr(cycle,'retarget_settings',{})))
                 except Exception as exc:
                     _sync_pose(character, pose, wp, seed=True)
                     stop_frames, stop_metrics = None, dict(accepted=False, single_attempt=cycle.stop_mode == 'prepared', stage='generation', reason=f'Final stop generation failed: {exc}')
-                cycle.note_final_stop(stop_frames, stop_metrics)
-                character.movement.reset_desired_velocity()
+                TIMINGS.record("stop_generation", (time.perf_counter()-generation_start)*1000)
+                if (not stop_metrics.get('accepted') or stop_metrics.get('recovery_only')) and cycle.reject_stop_preview(pose):
+                    facing = cycle._facing(pose, character.movement.current_facing)
+                    if not cycle.walk_primed:
+                        _prime_walk(character, facing)
+                        cycle.walk_primed = True
+                    with TIMINGS.measure("walk_update"):
+                        character.step(DT, _command(rt, facing, facing))
+                    if action.gait:
+                        action.gait['event'] = ''
+                else:
+                    cycle.note_final_stop(stop_frames, stop_metrics)
+                    character.movement.reset_desired_velocity()
             elif action.begin_stop_recovery:
                 try:
                     applied = _enter_arrival(character, action.pose, "F001", rt, wp, facing)
@@ -614,28 +761,31 @@ def worker(commands: Queue, publish):
                 except Exception as exc:
                     _sync_pose(character, action.pose, wp, seed=True)
                     cycle.note_stop_recovery(False, 0.0)
-                    publish({"type": "error", "message": f"Stop recovery failed: {exc}"})
+                    emit({"type": "error", "message": f"Stop recovery failed: {exc}"})
                 character.movement.reset_desired_velocity()
             elif action.begin_collect:
                 planted = action.pose
                 feet = foot_points(planted, parents, names)
                 swing = choose_swing(feet['left']['ankle'], feet['right']['ankle'], facing,
                                      feet['left']['ankle'][2], feet['right']['ankle'][2])
-                collect_cancel = Event()
-                collect_job = (collect_executor.submit(_collect_job, planted.copy(), swing, facing.copy(), collect_cancel), cycle.move_id, cycle.settle_seq)
+                collect_frames, metrics = _begin_collect(character, planted.copy(), swing, rt, wp, facing.copy())
+                if cycle.stage_collect(collect_frames, metrics, cycle.move_id, cycle.settle_seq):
+                    emit({"type": "collect_candidate", "move_id": cycle.move_id, "settle_seq": cycle.settle_seq,
+                          "frames": [frame.tolist() for frame in collect_frames], "metrics": metrics})
             elif action.begin_arrival:
                 planted = action.pose if action.pose is not None else pose
                 try:
                     applied = _enter_arrival(character, planted, cycle.target_pose_id, rt, wp, facing)
                 except Exception as exc:
-                    publish({"type": "error", "message": f"Pose transition failed: {exc}"})
+                    emit({"type": "error", "message": f"Pose transition failed: {exc}"})
                     applied = False
                     _sync_pose(character, planted, wp, seed=True)
                 cycle.note_arrival(applied, character.time_to_transition() if applied else 0.0)
             elif action.walk:
                 if action.prime_walk:
                     _prime_walk(character, facing)
-                character.step(DT, _command(rt, facing, facing))
+                with TIMINGS.measure("walk_update"):
+                    character.step(DT, _command(rt, facing, facing))
             elif action.play:
                 character.step(DT, _command(rt, facing, None))
             elif action.pose is not None:
@@ -651,7 +801,7 @@ def worker(commands: Queue, publish):
             last_root = pose[0, :2].copy()
             distance = None if goal is None else float(np.linalg.norm(goal[:2] - shown[0, :2]))
             if _arrival_due(nav, cycle, goal is not None):
-                publish(
+                emit(
                     {
                         "type": "arrived",
                         "pose_id": cycle.target_pose_id,
@@ -663,8 +813,12 @@ def worker(commands: Queue, publish):
                 nav = replace(nav, arrived_sent=True)
             gait = action.gait or {}
             gait["phase"] = cycle.phase
+            gait['stop_failure_reason'] = cycle.stop_failure_reason
+            gait['goal_error_m'] = distance
+            gait['final_stop_metrics'] = {name: value for name, value in cycle.final_stop_metrics.items()
+                                          if name in ('accepted', 'stage', 'reason', 'arrival_error_m', 'travel_distance_m', 'recovery_only')}
             if gait.get("event") == "stop_requested":
-                publish(
+                emit(
                     {
                         "type": "stop_triggered",
                         "distance_m": distance,
@@ -673,10 +827,13 @@ def worker(commands: Queue, publish):
                         "mode": cycle.mode,
                     }
                 )
-            publish(
+            emit(
                 {
                     "type": "frame",
-                    "visual_selection": visual_stop.selection if visual_stop else None,
+                    "sequence": tick,
+                    "simulation_time": tick * DT,
+                    "step_ms": round(step_ms, 3),
+                    "visual_selection": _stream_selection(visual_stop.selection) if visual_stop else None,
                     "stop_mode": cycle.stop_mode,
                     "destination_xy": None if cycle.goal is None else cycle.goal[:2].tolist(),
                     "phase": cycle.phase,
@@ -690,7 +847,7 @@ def worker(commands: Queue, publish):
             frames += 1
             tick += 1
             if tick % 15 == 0:
-                publish(
+                emit(
                     {
                         "type": "motion_state",
                         "phase": cycle.phase,
@@ -704,7 +861,7 @@ def worker(commands: Queue, publish):
                 )
             now = time.monotonic()
             if now - report_at >= 1.0:
-                publish(
+                emit(
                     {
                         "type": "metrics",
                         "stream_hz": round(frames / (now - report_at), 1),
@@ -713,12 +870,7 @@ def worker(commands: Queue, publish):
                 )
                 frames = 0
                 report_at = now
-            next_tick += DT
-            remaining = next_tick - time.monotonic()
-            if remaining > 0:
-                time.sleep(remaining)
-            else:
-                next_tick = time.monotonic()
+
 
 
 def _arrival_due(nav: NavState, cycle: LocomotionCycle, has_goal: bool) -> bool:

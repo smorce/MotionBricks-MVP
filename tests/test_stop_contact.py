@@ -14,7 +14,7 @@ class StopContactTests(unittest.TestCase):
         pose[names.index('RightLeg'), 2] += .2
         cycle = LocomotionCycle(log=None)
         cycle.ground_calibration = ground
-        cycle.begin_move([.07, 0], True, 1)
+        cycle.begin_move([.04, 0], True, 1)
         return cycle, pose
 
     def test_wait_advances_walk_and_timeout_does_not_settle(self):
@@ -57,6 +57,7 @@ class StopContactTests(unittest.TestCase):
                 break
         cycle.note_stop_recovery(True, .2)
         landed, _, _ = standing_pose()
+        landed[0, 0] = .04
         for _ in range(30):
             action = cycle.tick(observe(landed))
         self.assertEqual(action.phase, SETTLED)
@@ -88,7 +89,8 @@ class StopContactTests(unittest.TestCase):
             landed[0, 0] = .3
             for _ in range(3):
                 action = cycle.tick(observe(landed))
-            self.assertEqual(action.phase, SETTLED)
+            self.assertEqual(action.phase, "stop_failed")
+            self.assertIsNone(cycle.settled_pose)
 
     def test_contact_observation_runs_once_per_tick(self):
         cycle, pose = self.airborne()

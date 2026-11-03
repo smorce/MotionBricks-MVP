@@ -31,7 +31,7 @@ class LiveSearchTests(unittest.TestCase):
             seen.append(saved['metadata'].copy())
             raise ValueError('Unsafe candidate')
         character=SimpleNamespace(engine=object(),asset_pool=object())
-        with tempfile.TemporaryDirectory() as directory, \
+        with replay_directory() as directory, \
              patch.dict('os.environ',MOTIONBRICKS_STOP_REPLAY_DIR=directory), \
              patch('stop_replay.capture_replay',return_value=replay), \
              patch('stop_runtime.new_character',side_effect=lambda *a:object()), \
@@ -53,7 +53,7 @@ class LiveSearchTests(unittest.TestCase):
                 raise ValueError('Unsafe candidate')
             return frames
         character=SimpleNamespace(engine=object(),asset_pool=object())
-        with tempfile.TemporaryDirectory() as directory, \
+        with replay_directory() as directory, \
              patch.dict('os.environ', MOTIONBRICKS_STOP_REPLAY_DIR=directory), \
              patch('stop_replay.capture_replay',return_value=replay), \
              patch('stop_runtime.new_character',side_effect=lambda *a:object()), \
@@ -64,3 +64,45 @@ class LiveSearchTests(unittest.TestCase):
         self.assertIs(actual,frames)
         self.assertFalse(metrics.get('recovery_only',False))
         self.assertEqual(metrics['generation_conditions']['id'],winner)
+
+from contextlib import contextmanager
+@contextmanager
+def replay_directory():
+    from replay_writer import WRITER
+    with tempfile.TemporaryDirectory() as folder:
+        try:
+            yield folder
+        finally:
+            WRITER.flush()
+
+
+class LiveSearchOrderTests(unittest.TestCase):
+    def test_safe_lowered_support_is_reached_within_live_budget(self):
+        from engine import live_candidate_specs
+        from stop_candidate_search import search_candidates
+        elapsed = [0.]
+        def generate(player, spec):
+            elapsed[0] += .3
+            return spec
+        def diagnose(spec):
+            return {'accepted': spec['mode'] == 'staged' and spec['support'] == 'left' and spec['root_lower'] == .12}
+        with patch('stop_candidate_search.time.perf_counter', side_effect=lambda: elapsed[0]):
+            result = search_candidates(live_candidate_specs('left'), lambda spec: object(), generate, diagnose,
+                                       stop_on_first=True, deadline=2.)
+        self.assertIsNotNone(result['selected'])
+        self.assertLessEqual(elapsed[0], 2.)
+
+    def test_opposite_support_with_moderate_lowering_is_not_starved(self):
+        from engine import live_candidate_specs
+        from stop_candidate_search import search_candidates
+        elapsed = [0.]
+        def generate(player, spec):
+            elapsed[0] += .4
+            return spec
+        def diagnose(spec):
+            return dict(accepted=spec['mode']=='staged' and spec['support']=='right' and spec['root_lower']==.06)
+        with patch('stop_candidate_search.time.perf_counter', side_effect=lambda: elapsed[0]):
+            result = search_candidates(live_candidate_specs('left'),lambda spec:object(),generate,diagnose,
+                                       stop_on_first=True,deadline=2.)
+        self.assertIsNotNone(result['selected'])
+        self.assertLessEqual(elapsed[0],2.)

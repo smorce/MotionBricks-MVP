@@ -1,0 +1,97 @@
+{
+  "checkpoint": "checkpoint-01",
+  "date": "2026-11-03",
+  "controller": "prepared",
+  "status": "checkpoint_for_human_review",
+  "python_tests": 184,
+  "javascript_tests": 37,
+  "build": "passed_with_existing_dynamic_asset_and_chunk_warnings",
+  "human_feedback": "ユーザーより現状はかなり良いとの評価。個別候補の評価は自動登録しない。",
+  "stopping_conditions_trust": "機械的な採用条件に限定する。人間の自然さの判断とは一致せず、自然さの保証として信用しない。",
+  "preview_cases": [
+    {
+      "id": "prepared-1",
+      "label": "小さな斜めずれ・約74cm",
+      "frames": 101,
+      "error_m": 2.1311729077856488e-8,
+      "stop_start_seconds": 0.016666666666666666,
+      "human_rating": "unknown"
+    },
+    {
+      "id": "prepared-2",
+      "label": "直進・2m",
+      "frames": 235,
+      "error_m": 0.04511564085610001,
+      "stop_start_seconds": 2.25,
+      "human_rating": "unknown"
+    },
+    {
+      "id": "prepared-3",
+      "label": "旋回後・2m",
+      "frames": 164,
+      "error_m": 0.03716229365899376,
+      "stop_start_seconds": 1.0666666666666667,
+      "human_rating": "unknown"
+    },
+    {
+      "id": "prepared-4",
+      "label": "短距離・約30cm",
+      "frames": 101,
+      "error_m": 5.135693350345656e-8,
+      "stop_start_seconds": 0.016666666666666666,
+      "human_rating": "unknown"
+    },
+    {
+      "id": "prepared-5",
+      "label": "斜め接近・約1.4m",
+      "frames": 148,
+      "error_m": 0.022761679380746216,
+      "stop_start_seconds": 0.8,
+      "human_rating": "unknown"
+    }
+  ],
+  "browser_preview_check": {
+    "automatic_loading": true,
+    "patterns": 5,
+    "single_condition": true,
+    "slow_playback": true,
+    "stop_seeking": true,
+    "view_change": true,
+    "review_persistence": true,
+    "review_export": true,
+    "page_errors": []
+  },
+  "historical_measurements": [
+    {
+      "file": "browser-prepared-baseline.json",
+      "scope": "278e6d4のprepared方式、修正前60秒比較"
+    },
+    {
+      "file": "browser-prepared-comparison.json",
+      "scope": "配信分離後・方向再生成閾値5度時点の60秒比較。最終コード全体の計測ではない"
+    },
+    {
+      "file": "browser-after.json",
+      "scope": "方向再生成閾値1度・進行検証修正前の基本5例と60秒計測"
+    },
+    {
+      "file": "model-verification.json",
+      "scope": "方向再生成閾値1度・進行検証修正前の実モデル15例"
+    },
+    {
+      "file": "scenarios.json",
+      "scope": "進行検証修正前。連続クリックは拒否されており、passed=falseを保持"
+    },
+    {
+      "file": "final-capture.json / final-*.png",
+      "scope": "上記scenarios試験のデバッグ画像。良好パターンの例ではない"
+    }
+  ],
+  "limitations": [
+    "固定5例の成功は全状態の到着・自然さを保証しない",
+    "目的地5cm許容円の進行検証修正後、連続クリックのライブ試験は再実行していない",
+    "描画靴底の接地とSOMA骨格の検証値は一致を保証しない",
+    "初期充填による要求直後の準備待ちは60秒比較の再生中間隔と別に扱う"
+  ],
+  "next_step": "停止条件の追加調整を保留し、人間の評価した候補・時刻を起点に改善する"
+}

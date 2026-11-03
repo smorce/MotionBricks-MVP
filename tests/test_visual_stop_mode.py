@@ -19,13 +19,13 @@ class VisualModeTests(unittest.TestCase):
         self.assertAlmostEqual(float(goal[0]), .5)
         self.assertAlmostEqual(float(goal[1]), .2)
 
-    def test_next_move_can_return_to_legacy(self):
+    def test_old_legacy_request_uses_prepared_controller(self):
         cycle = LocomotionCycle(log=None)
         cycle.stop_mode = 'visual'
         commands = Queue()
         commands.put(dict(type='move', x=1, y=0, move_id=2, stop_mode='legacy'))
         _drain(commands, NavState(), cycle)
-        self.assertEqual(cycle.stop_mode, 'legacy')
+        self.assertEqual(cycle.stop_mode, 'prepared')
 
     def test_client_without_mode_keeps_default_controller(self):
         cycle = LocomotionCycle(log=None)
@@ -33,4 +33,4 @@ class VisualModeTests(unittest.TestCase):
         commands = Queue()
         commands.put(dict(type='move', x=1, y=0, move_id=3))
         _drain(commands, NavState(), cycle)
-        self.assertEqual(cycle.stop_mode, 'legacy')
+        self.assertEqual(cycle.stop_mode, 'prepared')

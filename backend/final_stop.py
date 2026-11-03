@@ -61,23 +61,25 @@ def stop_support(pose, goal, parents, names):
     return min(('left', 'right'), key=lambda s: float(points[s]['ankle'][:2] @ direction))
 
 
-def validate_stop_progress(frames, original, destination, support, parents, names):
+def validate_stop_progress(frames, original, destination, support, parents, names, *, destination_margin_m=.02):
     """回復区間の前進量、通過、支持足の累積滑りを検証する。"""
     delta = np.asarray(destination)[:2] - original[0, :2]
     distance = float(np.linalg.norm(delta))
     roots = np.asarray(frames)[:, 0, :2]
-    if distance > .08:
+    if distance > .001:
         projections = (roots - original[0, :2]) @ (delta / distance)
-        if (np.any(projections < -.02) or np.any(projections > distance + .02)
-                or np.any(np.linalg.norm(roots - np.asarray(destination)[:2], axis=1) > distance + .02)):
+        errors = np.linalg.norm(roots - np.asarray(destination)[:2], axis=1)
+        if (np.any(projections < -.02) or np.any((projections > distance) & (errors > destination_margin_m))
+                or np.any(errors > distance + .02)):
             return 'Stop trajectory passed destination or moved backward'
         if distance - np.linalg.norm(roots[-1] - np.asarray(destination)[:2]) < .01:
             return 'Stop recovery made insufficient progress'
-    start = foot_points(original, parents, names)[support]
-    for frame in frames:
-        foot = foot_points(frame, parents, names)[support]
-        if any(np.linalg.norm(foot[p][:2] - start[p][:2]) > .02 for p in ('ankle', 'toe')):
-            return 'Stop support foot drifted'
+    if support is not None:
+        start = foot_points(original, parents, names)[support]
+        for frame in frames:
+            foot = foot_points(frame, parents, names)[support]
+            if any(np.linalg.norm(foot[p][:2] - start[p][:2]) > .02 for p in ('ankle', 'toe')):
+                return 'Stop support foot drifted'
     return ''
 
 
@@ -133,6 +135,12 @@ def validate_stop_motion(frames, original, goal, parents, names, ground):
     if len(frames) < 4 or frames.shape[1:] != original.shape or not all(valid_pose(p) for p in frames):
         return result
     result.update(check_bone_lengths(frames, original, names))
+    rotations = np.asarray([original, *frames])[..., 3:7]
+    rotations = rotations / np.linalg.norm(rotations, axis=-1, keepdims=True)
+    angles = 2*np.arccos(np.clip(np.abs(np.sum(rotations[1:]*rotations[:-1], axis=-1)), 0, 1))
+    peak_frame, peak_joint = np.unravel_index(np.argmax(angles), angles.shape)
+    result['rotation_peak'] = dict(frame=int(peak_frame), joint=names[peak_joint],
+                                   angle_rad=float(angles[peak_frame, peak_joint]))
     calibration = ground
     from step_cycle import fk
     from stop_diagnostics import points_from_world

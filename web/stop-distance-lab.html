@@ -45,6 +45,7 @@ import {VRMLoaderPlugin,VRMUtils} from '@pixiv/three-vrm';
 
 const $=id=>document.getElementById(id);
 const controls={play:$('play'),time:$('time'),timeText:$('timeText'),rate:$('rate'),view:$('view'),loop:$('loop'),count:$('count'),shot:$('shot'),export:$('export')};
+const preparedPreview=new URLSearchParams(location.search).has('prepared');
 import {MAP,basis,basisInv,q as sourceQuat,calcWorldQuats as worldQuats,applySomaRotations} from './src/somaRetarget.js';
 function lerpPose(a,b,w){const out=[];for(let i=0;i<a.length;i++){const v=a[i].slice();for(let k=0;k<3;k++)v[k]+=(b[i][k]-v[k])*w;const qa=sourceQuat(a[i]),qb=sourceQuat(b[i]);if(qa.dot(qb)<0)qb.set(-qb.x,-qb.y,-qb.z,-qb.w);qa.slerp(qb,w);for(let k=0;k<4;k++)v[3+k]=qa.toArray()[k];out.push(v)}return out}
 function validManifest(data){
@@ -59,7 +60,7 @@ let allCandidates=[];
 $('moment').addEventListener('change',()=>{const event=data?.candidates.find(c=>c.events)?.events?.[$('moment').value];if(event==null){status('この時点は未記録です。自然さを判定せず、追加の実動作確認が必要です。');return}elapsed=event;playing=false;controls.time.value=String(elapsed);status('確認時点: '+$('moment').selectedOptions[0].text+' / '+elapsed.toFixed(2)+'秒')});
 function persistReviews(){if(data)localStorage.setItem('roze.visualReview.'+data.source_state_id,JSON.stringify([...reviewed]))}
 $('grid').addEventListener('input',persistReviews);$('grid').addEventListener('click',persistReviews);
-$('scenario').addEventListener('change',async()=>{data.candidates=allCandidates.filter(c=>$('scenario').value==='all'||c.scenario===$('scenario').value);$('offset').value='0';controls.count.value='2';await rebuild()});
+$('scenario').addEventListener('change',async()=>{data.candidates=allCandidates.filter(c=>$('scenario').value==='all'||c.scenario===$('scenario').value);$('offset').value='0';controls.count.value=preparedPreview?'1000':'2';await rebuild()});
 function configureScenarios(){for(const [id,value] of JSON.parse(localStorage.getItem('roze.visualReview.'+data.source_state_id)||'[]'))reviewed.set(id,value);allCandidates=data.candidates;$('scenario').replaceChildren(new Option('全候補','all'));for(const name of new Set(allCandidates.map(c=>c.scenario).filter(Boolean)))$('scenario').add(new Option(name,name));if(allCandidates.some(c=>c.scenario)){controls.count.value='2';$('grid').style.gridTemplateColumns='repeat(2,minmax(0,1fr))'}}
 function status(s,err=false){$('status').textContent=s;$('status').classList.toggle('error',err)}
 function clearCards(){cards.forEach(c=>{c.renderer.dispose();if(c.vrm)VRMUtils.deepDispose(c.vrm.scene);c.container.remove()});cards=[];$('grid').replaceChildren();}
@@ -70,11 +71,12 @@ function makeCard(item,index){
  const human=document.createElement('div');human.className='detail';human.textContent='目視：'+(reviewed.get(container.dataset.id)?.mark||'未確認');label.append(human);const description=document.createElement('div');description.className='detail';description.textContent=`目標 ${formatNum(item.target_distance_m)}m / ${item.target_pose_type||'—'} / 支持 ${item.support||'—'} / 固定 ${item.ik_pin_mask||'なし'} / 停止 ${formatNum(item.metrics?.stop_time_seconds)}秒 / 着地 L:${(item.metrics?.landing_times_seconds?.left||[]).map(t=>t.toFixed(2)).join(',')} R:${(item.metrics?.landing_times_seconds?.right||[]).map(t=>t.toFixed(2)).join(',')}`;
  label.append(heading,description);const badge=document.createElement('span');badge.className='pill';
  badge.textContent=item.metrics?.accepted===true?'自動検証 合格':item.metrics?.accepted===false?'自動検証 不合格':'自動検証 未計測';badge.title=item.metrics?.reason||'';badge.classList.toggle('good',item.metrics?.accepted===true);badge.classList.toggle('bad',item.metrics?.accepted===false);name.append(label,badge);
+ if(preparedPreview){description.textContent=`移動距離 ${formatNum(item.target_distance_m)}m / F001開始 ${formatNum(item.events.stop_start,2)}秒`;badge.textContent='固定再生';badge.classList.remove('good','bad')}
  const host=document.createElement('div');host.style.height='360px';
  const stats=document.createElement('div');stats.className='stats';
- const fields=[['現在の変位','travel'],['総移動距離','total'],['目標との誤差','error'],['接地足の滑り','slide'],['生成時間','seconds']];
+ const fields=preparedPreview?[['現在の変位','travel'],['目標との最終誤差','error'],['再生時間','seconds']]:[['現在の変位','travel'],['総移動距離','total'],['目標との誤差','error'],['接地足の滑り','slide'],['生成時間','seconds']];
  const vals={};for(const [t,k]of fields){const row=document.createElement('div');row.textContent=t;const b=document.createElement('strong');b.textContent='—';stats.append(row,b);vals[k]=b;}
- vals.total.textContent=formatNum(item.metrics?.actual_travel_m)+'m';vals.error.textContent=formatNum(item.metrics?.arrival_error_m)+'m';vals.slide.textContent=formatNum(item.metrics?.quality?.support_slide_m??item.metrics?.support_drift_max_m)+'m';vals.seconds.textContent=formatNum(item.metrics?.generation_seconds,2)+'秒';
+ if(vals.total)vals.total.textContent=formatNum(item.metrics?.actual_travel_m)+'m';vals.error.textContent=formatNum(item.metrics?.arrival_error_m)+'m';if(vals.slide)vals.slide.textContent=formatNum(item.metrics?.quality?.support_slide_m??item.metrics?.support_drift_max_m)+'m';vals.seconds.textContent=formatNum(preparedPreview?(item.frames.length-1)/item.fps:item.metrics?.generation_seconds,2)+'秒';
  const review=document.createElement('div');review.className='review';const notes=document.createElement('input');notes.placeholder='崩れたフレーム・理由のメモ';notes.value=reviewed.get(container.dataset.id)?.notes||'';notes.addEventListener('input',()=>{const old=reviewed.get(container.dataset.id)||{};reviewed.set(container.dataset.id,{...old,at_seconds:elapsed,notes:notes.value})});
  for(const [textValue,mark]of[['◎ 自然','good'],['× 崩れ','bad'],['? 未確認','unknown']]){const b=document.createElement('button');b.textContent=textValue;b.onclick=()=>{const old=reviewed.get(container.dataset.id)||{};reviewed.set(container.dataset.id,{...old,mark,at_seconds:elapsed,notes:notes.value});container.dataset.mark=mark;human.textContent='目視：'+textValue;status(`${container.dataset.id}: ${textValue} を記録しました（${elapsed.toFixed(2)}秒）`)};review.append(b)}review.append(notes);
  container.append(name,host,stats,review);$('grid').append(container);container.dataset.mark=reviewed.get(container.dataset.id)?.mark||'unknown';
@@ -104,9 +106,9 @@ function apply(card,t){const {item,vrm}=card;if(!vrm)return;const pos=Math.max(0
  applySomaRotations(vrm,data.rig,pose,card.restSource,card.restDest);
  const saved=JSON.parse(localStorage.getItem('roze.stanceAdjust')||'{}');const stance=stanceData({legDeg:saved.leg_adduct_deg,armDeg:saved.arm_abduct_deg,toeDeg:saved.toe_forward_deg});for(const [left,right,fn,value] of [['leftUpperLeg','rightUpperLeg',adductUpperLegs,stance.leg_adduct_deg],['leftUpperArm','rightUpperArm',abductUpperArms,stance.arm_abduct_deg],['leftFoot','rightFoot',pointFeetForward,stance.toe_forward_deg]]){const l=vrm.humanoid.getNormalizedBoneNode(left),r=vrm.humanoid.getNormalizedBoneNode(right);if(l&&r)fn(l.quaternion,r.quaternion,THREE.MathUtils.degToRad(value));}vrm.update(0);card.values.travel.textContent=formatNum(Math.hypot(pose[0][0]-start[0],pose[0][1]-start[1]))+'m';
 }
-async function rebuild(){if(!data||!vrmFile)return;if(Number($('offset').value)>=data.candidates.length)$('offset').value='0';const token=++loadGeneration;playing=false;controls.play.textContent='▶ 再生';clearCards();const shown=data.candidates.slice(Number($('offset').value),Number($('offset').value)+Number(controls.count.value));cards=shown.map(makeCard);status(`${shown.length}体のロゼを読み込み中…`);
+async function rebuild(){if(!data||!vrmFile)return;if(Number($('offset').value)>=data.candidates.length)$('offset').value='0';const token=++loadGeneration;playing=false;controls.play.disabled=controls.time.disabled=controls.shot.disabled=controls.export.disabled=true;controls.play.textContent='▶ 再生';clearCards();const shown=data.candidates.slice(Number($('offset').value),Number($('offset').value)+Number(controls.count.value));cards=shown.map(makeCard);status(`${shown.length}体のロゼを読み込み中…`);
  const objectUrl=URL.createObjectURL(vrmFile);try{for(const card of cards){await initCard(card,objectUrl,token);if(token!==loadGeneration)return}}catch(e){status(`読み込み失敗: ${e.message}`,true);return}finally{URL.revokeObjectURL(objectUrl)}
- elapsed=0;maxTime=Math.max(...shown.map(c=>(c.frames.length-1)/c.fps));controls.time.max=String(maxTime);controls.time.value='0';for(const card of cards)apply(card,elapsed);controls.play.disabled=controls.time.disabled=controls.shot.disabled=controls.export.disabled=false;status(`${shown.length}候補を表示しました。全候補は同一時間で再生します。自動検証不合格も比較のため表示できます。`)}
+ elapsed=0;maxTime=Math.max(...shown.map(c=>(c.frames.length-1)/c.fps));controls.time.max=String(maxTime);controls.time.value='0';for(const card of cards)apply(card,elapsed);controls.play.disabled=controls.time.disabled=controls.shot.disabled=controls.export.disabled=false;status(preparedPreview?`${shown.length}パターンを表示しました。▶ 再生で開始します。停止開始への移動は、移動条件を1種類選んでご利用ください。`:`${shown.length}候補を表示しました。全候補は同一時間で再生します。自動検証不合格も比較のため表示できます。`)}
 $('vrmFile').addEventListener('change',async e=>{vrmFile=e.target.files?.[0]||null;await rebuild()});
 $('manifestFile').addEventListener('change',async e=>{try{data=validManifest(JSON.parse(await e.target.files[0].text()));reviewed.clear();configureScenarios();await rebuild()}catch(err){status(`比較データ読み込み失敗: ${err.message}`,true)}});
 $('offset').addEventListener('change',rebuild);controls.count.addEventListener('change',rebuild);controls.view.addEventListener('change',()=>cards.forEach(setView));
@@ -117,6 +119,23 @@ controls.export.addEventListener('click',()=>{const result={schema_version:1,sou
 controls.shot.addEventListener('click',()=>{const columns=Math.min(cards.length,4),W=600,H=405,rows=Math.ceil(cards.length/columns),canvas=document.createElement('canvas');canvas.width=W*columns;canvas.height=H*rows;const ctx=canvas.getContext('2d');ctx.fillStyle='#121b27';ctx.fillRect(0,0,canvas.width,canvas.height);cards.forEach((c,i)=>{const x=(i%columns)*W,y=Math.floor(i/columns)*H;ctx.drawImage(c.renderer.domElement,x,y,W,H-45);ctx.fillStyle='#f3f7ff';ctx.font='16px sans-serif';ctx.fillText(`${c.item.label||c.item.id} / ${reviewed.get(c.container.dataset.id)?.mark||'未評価'} / ${elapsed.toFixed(2)}秒`,x+15,y+H-15)});canvas.toBlob(blob=>{if(blob)download('roze-stop-compare.png',blob)},'image/png')});
 let previous=performance.now();function animate(now){const dt=Math.min((now-previous)/1000,.2);previous=now;if(playing){elapsed+=dt*Number(controls.rate.value);if(elapsed>maxTime){elapsed=controls.loop.checked?elapsed%maxTime:maxTime;if(!controls.loop.checked){playing=false;controls.play.textContent='▶ 再生'}}}controls.time.value=String(elapsed);controls.timeText.textContent=elapsed.toFixed(2)+'秒';for(const c of cards){apply(c,elapsed);if(c.vrm)c.renderer.render(c.scene,c.camera)}requestAnimationFrame(animate)}requestAnimationFrame(animate);
 const observer=new ResizeObserver(()=>cards.forEach(resizeCard));observer.observe($('grid'));window.addEventListener('resize',()=>cards.forEach(resizeCard));
+if(preparedPreview){
+ document.title='F001接続・目視確認パターン';
+ document.querySelector('h1').textContent='停止準備 → F001接続｜5つの確認パターン';
+ document.querySelector('header p').textContent='現在の実装で生成した歩行から停止までを繰り返し確認できます。自然さは未評価です。移動条件を選ぶと1種類ずつ確認できます。緑の輪は元のクリック位置です。';
+ const back=document.createElement('a');back.href='/';back.textContent='← 床クリックの画面へ戻る';back.style.color='#79d9c0';document.querySelector('header').append(back);
+ $('vrmFile').closest('label').style.display='none';$('manifestFile').closest('label').style.display='none';
+ $('moment').querySelector('[value="last_step"]').remove();$('moment').querySelector('[value="landing"]').remove();$('moment').querySelector('[value="stopped"]').remove();$('moment').querySelector('[value="after_one_second"]').remove();
+ status('確認パターンとロゼを読み込み中…');
+ try{
+  const [manifest,model]=await Promise.all([fetch('/f001-previews.json'),fetch('http://127.0.0.1:8765/roze.vrm')]);
+  if(!manifest.ok||!model.ok)throw Error('Preview data or VRM request failed');
+  data=validManifest(await manifest.json());vrmFile=await model.blob();
+  for(const candidate of data.candidates)candidate.scenario=candidate.label;
+  configureScenarios();controls.count.value='1000';await rebuild();
+  document.querySelector('.footer').textContent='固定した生成結果を再生します（追加のモデル計算はありません）。5種類は別の歩行状態から生成しています。短いパターンは最後の姿勢で待機します。「自然／崩れ」とメモはブラウザに保存され、「目視評価を保存」でまとめて出力できます。';
+ }catch(error){status(`確認パターンの読み込み失敗: ${error.message}`,true)}
+}
 </script>
 </body>
 </html>

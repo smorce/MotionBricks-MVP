@@ -41,7 +41,7 @@ def state_features(replay):
                 ground=replay['metadata']['ground'])
 
 
-def pure_generate(character, replay, spec, rt, idle):
+def pure_generate(character, replay, spec, rt, idle, *, contact_lock=False):
     from engine import DT
     from final_stop import build_stop_target, contact_points, foot_points, facing_of
     from quats import quat_mul
@@ -75,28 +75,35 @@ def pure_generate(character, replay, spec, rt, idle):
         targets[:, 0, 2] += data['ground']['floor_z'] - min(p[2] for side in feet.values() for p in side.values())
         count = 4
     mask = rt['IKPin'].NONE
+    settings = spec.get('generation_settings', {})
     if spec['pinned']:
         mask = rt['IKPin'].LEFT_FOOT if data['support'] == 'left' else rt['IKPin'].RIGHT_FOOT
     character.generate_to_target_poses(wp.array(targets.astype(np.float32), dtype=wp.transform, device=character.engine.device),
-        rt['TargetPoseInferenceParams'](transition_early_by_frames=0, num_poses_to_use=count,
-                                      ik_pin_mask=mask, allowed_token_counts=(8, 14)))
+        rt['TargetPoseInferenceParams'](transition_early_by_frames=0, num_poses_to_use=settings.get('num_poses_to_use', count),
+                                      ik_pin_mask=mask, allowed_token_counts=tuple(settings.get('allowed_token_counts', (8, 14)))))
     if spec['pinned']:
         # 公式APIは目標の足を捕捉するため、歩行開始時の支持足を明示的に捕捉し直す。
         character._target_pose_ik_corrector.capture_pins(
             wp.array(original.astype(np.float32), dtype=wp.transform, device=character.engine.device),
             mask, stream=character.engine.stream)
+    lock = None
+    if contact_lock:
+        from stop_contact_lock import StopContactLock
+        lock = StopContactLock(original, data['contacts'], data['parents'], data['names'], data['ground'])
     frames, contacts = [], []
     for _ in range(480):
         character._sample_playback(DT)
         if spec['pinned']:
             character._target_pose_ik_corrector.apply(character.current_pose, 1.0, stream=character.engine.stream)
+        if lock is not None:
+            lock.apply(character, rt)
         frames.append(character.current_pose.numpy().reshape((-1, 7)).copy())
         contacts.append(character.current_foot_contacts.numpy().reshape(-1).tolist())
         if character.time_to_transition() <= 0:
             break
     else:
         raise RuntimeError('Stop generation timed out')
-    generated = GeneratedStop(frames, contacts, data['support'])
+    generated = GeneratedStop(frames, contacts, data['support'] if spec['pinned'] else None)
     generated.target_poses = targets.tolist()
     return generated
 

@@ -49,10 +49,11 @@ def travel_relative_history(state):
     return history
 
 
-def similarity(state, reference):
+def similarity(state, reference, current_history=None, reference_history=None):
     if any(state.get(k) != reference.get(k) for k in ('support', 'phase')):
         return None
-    a, b = travel_relative_history(state), travel_relative_history(reference)
+    a = travel_relative_history(state) if current_history is None else current_history
+    b = travel_relative_history(reference) if reference_history is None else reference_history
     if a is None or b is None or a.shape != b.shape or not np.isfinite(a).all():
         return None
     contacts = np.asarray(state.get('contacts', []))
@@ -72,10 +73,11 @@ def similarity(state, reference):
     return float(1 - np.mean(components))
 
 
-def select_stop(state, remaining_m, candidates):
+def select_stop(state, remaining_m, candidates, current_history=None):
     matches = []
+    current = travel_relative_history(state) if current_history is None else current_history
     for row in candidates:
-        score = similarity(state, row['context'])
+        score = similarity(state, row['context'], current, row.get('reference_history'))
         x = row['specification']['distance_m']
         if score is not None and x <= remaining_m + .04:
             matches.append((row, score))

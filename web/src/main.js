@@ -1,3 +1,5 @@
+import {PlaybackBuffer} from './playbackBuffer.js';
+const playbackBuffer = new PlaybackBuffer(100);
 import {MAP, calcWorldQuats, applySomaRotations} from './somaRetarget.js';
 import {preflightCollect} from './collectValidation.js';
 import * as THREE from 'three';
@@ -149,7 +151,7 @@ if (new URLSearchParams(location.search).has('observation')) {
         throw new Error('Scene is not ready');
       }
       socket.send(JSON.stringify({type:'move', x:lastFrame.poses[0][0]+dx,
-        y:lastFrame.poses[0][1]+dy, hold_stance:true, stop_mode:document.querySelector('#stopMode').value}));
+        y:lastFrame.poses[0][1]+dy, ...beginMoveSource(), hold_stance:true, stop_mode:document.querySelector('#stopMode').value}));
     },
     capture() {
       if (!vrm || !sceneReady || !lastFrame) throw new Error('Scene is not ready');
@@ -700,7 +702,7 @@ function sendArrival(usecase, x, z){
   clickAt=performance.now();
   lastDecision=`${usecase.title} を選択中…`;
   const goal=threePointToRuntime(x-spawn.x, z-spawn.z);
-  socket.send(JSON.stringify({type:'move', x:goal.x, y:goal.y, usecase:usecase.id, intent:usecase.intent, hold_stance:usecase.id==='open-floor', retarget_settings:currentStance(), stop_mode:document.querySelector('#stopMode').value}));
+  socket.send(JSON.stringify({type:'move', x:goal.x, y:goal.y, ...beginMoveSource(), usecase:usecase.id, intent:usecase.intent, hold_stance:usecase.id==='open-floor', retarget_settings:currentStance(), stop_mode:document.querySelector('#stopMode').value}));
 }
 function buildUsecaseList(){
   const root=document.querySelector('#cases');
@@ -714,20 +716,15 @@ function buildUsecaseList(){
   }
 }
 buildUsecaseList();
-function connect(){
-  const observationPort=new URLSearchParams(location.search).has('observation')
-    ? new URLSearchParams(location.search).get('wsPort') : null;
-  socket=new WebSocket(`ws://127.0.0.1:${observationPort||8765}/ws`);
-  socket.onopen=()=>{status.textContent='接続済み。VRMを読み込んでください。'};
-  socket.onmessage=(e)=>{
-    const msg=JSON.parse(e.data);
-    if(msg.type==='rig'){
-      rig=msg;
-      initializeRetarget();
-      tryRevealCharacter();
-    }
-    if(msg.type==='collect_candidate') reviewCollect(msg);
-    if(msg.type==='frame'){
+let newestStreamMove=null;
+let appliedSequence=-1;
+function beginMoveSource(){
+  playbackBuffer.beginMove(newestStreamMove??0);
+  lastPose=currentPose=lastFrame.poses;
+  poseStamp=performance.now();
+  return {source_sequence:lastFrame.sequence,source_move_id:lastFrame.gait?.move_id};
+}
+function acceptFrame(msg){
       document.querySelector('#visualStopStatus').textContent=formatVisualStop(msg);
       if(owner.seenMove!=null && msg.gait?.move_id!=null && msg.gait.move_id<owner.seenMove) return;
       if(msg.gait?.move_id===owner.moveId && msg.gait?.settle_seq<owner.settleSeq) return;
@@ -764,6 +761,25 @@ function connect(){
       if(clickAt){clickLatency=performance.now()-clickAt; clickAt=0}
       if(Number.isFinite(msg.generate_ms)) generateMs=msg.generate_ms;
       tryRevealCharacter();
+
+}
+function connect(){
+  const observationPort=new URLSearchParams(location.search).has('observation')
+    ? new URLSearchParams(location.search).get('wsPort') : null;
+  socket=new WebSocket(`ws://127.0.0.1:${observationPort||8765}/ws`);
+  socket.onopen=()=>{playbackBuffer.clear();status.textContent='接続済み。VRMを読み込んでください。'};
+  socket.onmessage=(e)=>{
+    const msg=JSON.parse(e.data);
+    if(msg.type==='rig'){
+      rig=msg;
+      initializeRetarget();
+      tryRevealCharacter();
+    }
+    if(msg.type==='collect_candidate') reviewCollect(msg);
+    if(msg.type==='frame'){
+      if(msg.gait?.move_id!=null && newestStreamMove!=null && msg.gait.move_id<newestStreamMove)return;
+      if(msg.gait?.move_id!==newestStreamMove){playbackBuffer.clear();newestStreamMove=msg.gait?.move_id;}
+      playbackBuffer.push(msg,performance.now());
     }
     if(msg.type==='metrics' && Number.isFinite(msg.generate_ms)) generateMs=msg.generate_ms;
     if(msg.type==='decision'){
@@ -779,17 +795,6 @@ function connect(){
       lastStage=`最後の一歩: 残り${Number(msg.distance_m).toFixed(2)}m / 速度${Number(msg.speed_mps).toFixed(2)}m/s`;
     }
     if(msg.type==='motion_state'){
-      motionPhase=msg.phase||motionPhase;
-      officialState=String(msg.official_state||'');
-      actualSpeed=Number(msg.actual_speed_mps);
-      if(msg.gait) {
-        gait=msg.gait;
-        if(gait.collect_failure_reason) lastStage='収束失敗・停止姿勢維持';
-        else if(msg.phase==='collect_preparing') lastStage='収束モーション生成中';
-        else if(msg.phase==='collecting') lastStage='収束モーション再生中';
-        else if(msg.phase==='settled') lastStage=gait.collect_attempted?'収束完了':gait.collect_checked?'収束不要':'上半身Idle移行中・足幅判定待ち';
-        if(gait.collect_metrics?.before) lastStage+=` / 足幅 前 ${gait.collect_metrics.before.map(v=>v.toFixed(3)).join('/')}m → 後 ${gait.collect_metrics.after.map(v=>v.toFixed(3)).join('/')}m`;
-      }
       const phase={
         idle:'待機', moving:'移動', decelerating:'減速', final_step:'最後の一歩',
         waiting_for_foot_contact:'着地待ち', contact_recovery:'接地回復中', stop_failed:'停止失敗（歩行停止済み）', settled:'停止姿勢',
@@ -875,11 +880,27 @@ window.addEventListener('resize',()=>{
 });
 const clock=new THREE.Clock();
 let statusT=0;
+const renderIntervals=[];
+const renderDurations=[];
+let lastRenderAt=null;
+let renderReportAt=0;
+window.motionBricksPerformance=()=>{
+  const summary=values=>{const sorted=[...values].sort((a,b)=>a-b);return {count:sorted.length,p95_ms:sorted[Math.floor(sorted.length*.95)],max_ms:sorted.at(-1)};};
+  return {render_interval:summary(renderIntervals),render_duration:summary(renderDurations)};
+};
 function animate(){
   requestAnimationFrame(animate);
+  const renderStarted=performance.now();
+  if(lastRenderAt!==null){renderIntervals.push(renderStarted-lastRenderAt);if(renderIntervals.length>4096)renderIntervals.shift();}
+  lastRenderAt=renderStarted;
   const delta=Math.min(clock.getDelta(),.1);
   const blend=Math.min(1,(performance.now()-poseStamp)/(1000/60));
-  const pose=currentPose?lerpPose(lastPose, currentPose, blend):null;
+  const buffered=playbackBuffer.sample(performance.now());
+  if(buffered){
+    const visible=buffered.blend>=1?buffered.b:buffered.a;
+    if(visible.sequence!==appliedSequence){acceptFrame(visible);appliedSequence=visible.sequence;}
+  }
+  const pose=buffered?lerpPose(buffered.a.poses,buffered.b.poses,buffered.blend):currentPose?lerpPose(lastPose, currentPose, blend):null;
   observationPose=pose;
   if(vrm){
     if(!sceneReady){
@@ -994,6 +1015,12 @@ function animate(){
       `d3-mini: ${lastDecision}`,currentMotionState,lastStage,lastError].filter(Boolean).join('\n');
   }
   renderer.render(scene,camera);
+  renderDurations.push(performance.now()-renderStarted);if(renderDurations.length>4096)renderDurations.shift();
+  if(sceneReady && performance.now()-renderReportAt>=5000){
+    renderReportAt=performance.now();
+    fetch('http://127.0.0.1:8765/performance/render',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({...window.motionBricksPerformance(),scene_ready:true})}).catch(()=>{});
+  }
   observationFrame+=1;
 }
 animate();

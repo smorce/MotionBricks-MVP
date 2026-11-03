@@ -290,7 +290,7 @@ class CycleTests(unittest.TestCase):
         self.assertTrue(any(item.walk for item in actions))
         self.assertIsNone(cycle.step)
         self.assertEqual(sum(item.begin_final_stop for item in actions), 1)
-        self.assertLess(abs(poses[-1][0, 0] - 4.0), 0.12)
+        self.assertLessEqual(abs(poses[-1][0, 0] - 4.0), cycle.choice.final_window_m)
         self.assertIsNone(cycle.settled_pose)
 
     def test_procedural_off_short_goal_never_builds_a_step(self):
@@ -299,7 +299,7 @@ class CycleTests(unittest.TestCase):
         self.assertIsNone(cycle.step)
         self.assertTrue(any(item.begin_final_stop for item in actions))
         self.assertIsNone(cycle.settled_pose)
-        self.assertLess(abs(poses[-1][0, 0] - 0.30), 0.12)
+        self.assertLessEqual(abs(poses[-1][0, 0] - 0.30), cycle.choice.final_window_m)
 
     def test_settled_pose_survives_a_speed_spike_and_a_late_frame(self):
         cycle, _actions, poses, _log = self._run(0.30, procedural=True)
