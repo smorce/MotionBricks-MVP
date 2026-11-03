@@ -162,32 +162,3 @@ npx --yes --package playwright playwright screenshot --browser chromium --channe
 F001の固定パターンは `http://127.0.0.1:5188/stop-distance-lab.html?prepared` から開ける。追加推論なしで比較できるため、同じ動作の再確認に使う。ただし、固定再生の成功をライブ生成・配信の検証に代用しない。
 
 報告では「操作した」「画像を開いた」「表示テキストを取得した」「人が自然と評価した」を区別する。計測資料には対象モード、実装時点、入力条件、未確認事項を残し、過去の成功例を現在の全入力への保証として扱わない。
-
----
-
-## ショートカットエイリアス (Shortcut Alias)
-
-以下のエイリアスを使用して、特定の対話モードやアクションを指示できます。
-
-*   `/ask:` ユーザーがポリシー決定や戦略に関する相談を求めています。タスク実行を一時停止し、多角的な分析と提案で応答してください。明確な指示があるまでタスクは進めません。
-*   `/plan:` 作業計画 (`<タスク分析>`を含む) を明確かつ徹底的に概説し、ユーザーとの間で矛盾がないか確認します。合意が得られた場合にのみ実行に進みます。
-*   `/architecture:` 要求された変更について深く検討し、既存コードを分析し、必要な変更範囲を特定します。システムの制約、規模、パフォーマンス、要件を考慮した設計のトレードオフ分析 (5段落程度) を生成します。分析に基づき4～6個の明確化質問を行い、回答を得た上で包括的なシステム設計アーキテクチャ案を作成し、承認を求めます。フィードバックがあれば対話し、計画を修正して再承認を求めます。承認後、実装計画を立て、再度承認を得てから実行します。各ステップ完了時に進捗と次のステップを報告します。
-*   `/debug:` バグの根本原因特定を支援します。考えられる原因を5～7個リストアップし、有力な1～2個に絞り込みます。ログなどを活用して仮説を検証し、修正を適用する前に報告します。
-*   `/cmt:` 特定のコード箇所について、意図を明確にするためのコメントやドキュメントを追加します。既存のコードフォーマットやスタイルに従います。
-*   `/log:` 適切なログレベル（例: DEBUG, INFO, WARN, ERROR）を考慮し、必要な情報のみを記録するログ出力を追加・修正します。ログは簡潔にし、冗長性を避けます。既存のコードフォーマットに従います。
-*   `/generateDocument:` 作業したコードを整理して、余計な部分を取り除き、とても分かりやすくドキュメント化してください。
-*   `/RemoveSlop:` Check the diff against main, and remove all AI generated slop introduced in this branch.
-
-This includes:
-- Extra comments that a human wouldn't add or is inconsistent with the rest of the file
-- Extra defensive checks or try/catch blocks that are abnormal for that area of the codebase (especially if called by trusted / validated codepaths)
-- Casts to any to get around type issues
-- Any other style that is inconsistent with the file
-
-Report at the end with only a 1-3 sentence summary of what you changed
-*   `/codeReview:` 1. Please analyze the codebase in this repository in detail along the following three axes:
-   1-1. Performance
-   1-2. Cleanliness
-   1-3. Security
-2. Evaluate what level each axis is at.
-3. If there are points that need improvement, summarize them in a markdown format document and save it.
