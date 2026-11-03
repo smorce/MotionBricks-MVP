@@ -15,3 +15,13 @@ test('新実験の未一致生成を評価済みと表示しない',()=>{
  const text=formatVisualStop({stop_mode:'prepared',phase:'settled',visual_selection:{status:'experimental',action:'stop',candidate:{id:'A-0.500'},reference_distance_m:.5,target_pose_distance_m:.59}});
  assert.match(text,/未評価のA方式/);assert.match(text,/目視評価待ち/);
 });
+test('失敗後の待機移行を到着成功と表示しない',()=>{
+ const base={stop_mode:'prepared',visual_selection:{status:'experimental',action:'stop',candidate:{id:'A-0.300'}}};
+ assert.match(formatVisualStop({...base,phase:'stop_relaxing'}),/ゆっくり移行中/);
+ const text=formatVisualStop({...base,phase:'stop_relaxed'});
+ assert.match(text,/停止生成は失敗/);assert.doesNotMatch(text,/停止済み・接地後/);
+});
+test('採用ガードと診断の警告を分けて表示する',()=>{
+ const text=formatVisualStop({stop_mode:'prepared',phase:'settled',visual_selection:{status:'experimental',candidate:{id:'A'}},gait:{final_stop_metrics:{policy:'prepared-minimum-guards-v1',accepted:true,warnings:['progress','swing']}}});
+ assert.match(text,/通過（自然さは未評価）/);assert.match(text,/前進量・通過・遊脚・着地/);
+});

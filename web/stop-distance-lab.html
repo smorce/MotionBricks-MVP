@@ -71,7 +71,7 @@ function makeCard(item,index){
  const human=document.createElement('div');human.className='detail';human.textContent='目視：'+(reviewed.get(container.dataset.id)?.mark||'未確認');label.append(human);const description=document.createElement('div');description.className='detail';description.textContent=`目標 ${formatNum(item.target_distance_m)}m / ${item.target_pose_type||'—'} / 支持 ${item.support||'—'} / 固定 ${item.ik_pin_mask||'なし'} / 停止 ${formatNum(item.metrics?.stop_time_seconds)}秒 / 着地 L:${(item.metrics?.landing_times_seconds?.left||[]).map(t=>t.toFixed(2)).join(',')} R:${(item.metrics?.landing_times_seconds?.right||[]).map(t=>t.toFixed(2)).join(',')}`;
  label.append(heading,description);const badge=document.createElement('span');badge.className='pill';
  badge.textContent=item.metrics?.accepted===true?'自動検証 合格':item.metrics?.accepted===false?'自動検証 不合格':'自動検証 未計測';badge.title=item.metrics?.reason||'';badge.classList.toggle('good',item.metrics?.accepted===true);badge.classList.toggle('bad',item.metrics?.accepted===false);name.append(label,badge);
- if(preparedPreview){description.textContent=`移動距離 ${formatNum(item.target_distance_m)}m / F001開始 ${formatNum(item.events.stop_start,2)}秒`;badge.textContent='固定再生';badge.classList.remove('good','bad')}
+ if(preparedPreview){description.textContent=`移動距離 ${formatNum(item.target_distance_m)}m / ${item.experiment==='failure_relaxation'?'待機移行':'F001'}開始 ${formatNum(item.events.stop_start,2)}秒`;badge.textContent='固定再生';badge.classList.remove('good','bad')}
  const host=document.createElement('div');host.style.height='360px';
  const stats=document.createElement('div');stats.className='stats';
  const fields=preparedPreview?[['現在の変位','travel'],['目標との最終誤差','error'],['再生時間','seconds']]:[['現在の変位','travel'],['総移動距離','total'],['目標との誤差','error'],['接地足の滑り','slide'],['生成時間','seconds']];
@@ -120,20 +120,23 @@ controls.shot.addEventListener('click',()=>{const columns=Math.min(cards.length,
 let previous=performance.now();function animate(now){const dt=Math.min((now-previous)/1000,.2);previous=now;if(playing){elapsed+=dt*Number(controls.rate.value);if(elapsed>maxTime){elapsed=controls.loop.checked?elapsed%maxTime:maxTime;if(!controls.loop.checked){playing=false;controls.play.textContent='▶ 再生'}}}controls.time.value=String(elapsed);controls.timeText.textContent=elapsed.toFixed(2)+'秒';for(const c of cards){apply(c,elapsed);if(c.vrm)c.renderer.render(c.scene,c.camera)}requestAnimationFrame(animate)}requestAnimationFrame(animate);
 const observer=new ResizeObserver(()=>cards.forEach(resizeCard));observer.observe($('grid'));window.addEventListener('resize',()=>cards.forEach(resizeCard));
 if(preparedPreview){
+ const relaxationPreview=new URLSearchParams(location.search).has('relaxation');
  document.title='F001接続・目視確認パターン';
  document.querySelector('h1').textContent='停止準備 → F001接続｜5つの確認パターン';
  document.querySelector('header p').textContent='現在の実装で生成した歩行から停止までを繰り返し確認できます。自然さは未評価です。移動条件を選ぶと1種類ずつ確認できます。緑の輪は元のクリック位置です。';
+ if(relaxationPreview){document.title='停止失敗後・ゆっくり待機移行';document.querySelector('h1').textContent='停止失敗後 → SOMA待機へのゆっくり移行';document.querySelector('header p').textContent='保存した停止失敗の接続元から、公式Idleへの移行を0.5倍速で生成した確認例です。最初の1秒で保持姿勢からなじませます。到着成功とは扱わず、自然さは目視評価待ちです。'}
  const back=document.createElement('a');back.href='/';back.textContent='← 床クリックの画面へ戻る';back.style.color='#79d9c0';document.querySelector('header').append(back);
  $('vrmFile').closest('label').style.display='none';$('manifestFile').closest('label').style.display='none';
  $('moment').querySelector('[value="last_step"]').remove();$('moment').querySelector('[value="landing"]').remove();$('moment').querySelector('[value="stopped"]').remove();$('moment').querySelector('[value="after_one_second"]').remove();
  status('確認パターンとロゼを読み込み中…');
  try{
-  const [manifest,model]=await Promise.all([fetch('/f001-previews.json'),fetch('http://127.0.0.1:8765/roze.vrm')]);
+  const [manifest,model]=await Promise.all([relaxationPreview?fetch('/failure-relaxation-previews.json'):fetch('/f001-previews.json'),fetch('http://127.0.0.1:8765/roze.vrm')]);
   if(!manifest.ok||!model.ok)throw Error('Preview data or VRM request failed');
   data=validManifest(await manifest.json());vrmFile=await model.blob();
   for(const candidate of data.candidates)candidate.scenario=candidate.label;
   configureScenarios();controls.count.value='1000';await rebuild();
   document.querySelector('.footer').textContent='固定した生成結果を再生します（追加のモデル計算はありません）。5種類は別の歩行状態から生成しています。短いパターンは最後の姿勢で待機します。「自然／崩れ」とメモはブラウザに保存され、「目視評価を保存」でまとめて出力できます。';
+  if(relaxationPreview)document.querySelector('.footer').textContent='停止失敗後の待機移行の固定再生です。追加推論はありません。移行後も到着失敗の記録を残します。「自然／崩れ」とメモを保存できます。';
  }catch(error){status(`確認パターンの読み込み失敗: ${error.message}`,true)}
 }
 </script>

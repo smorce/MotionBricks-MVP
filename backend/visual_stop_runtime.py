@@ -61,9 +61,17 @@ class VisualStopRuntime:
         reason = validate_stop_progress(frames, np.asarray(replay['pose']), original_goal, frames.support, data['parents'], data['names'],
                                         destination_margin_m=.05 if self.prepared else .02)
         accepted = validation['accepted'] and not reason and error <= .05 + 1e-9
+        progress_reason = reason
+        decision = None
+        if self.prepared:
+            from prepared_stop_acceptance import evaluate_prepared_stop
+            decision = evaluate_prepared_stop(validation, error, progress_reason)
+            accepted = decision['accepted']
+            reason = decision['reason']
         TIMINGS.record('stop_diagnostics', (time.perf_counter()-diagnostic_start)*1000)
         record = dict(selection=selection, original_destination=np.asarray(original_goal).tolist(),
-                      source_replay=replay, validation=validation, progress_failure=reason,
+                      source_replay=replay, validation=validation, progress_failure=progress_reason,
+                      acceptance_policy=decision,
                       experiment='prepared_f001' if self.prepared else 'strict_visual',
                       actual_arrival_error_m=error, generation_settings=selection['candidate']['generation_settings'],
                       human_rating='unknown', notes='', target_adjustment_m=0, animation_scale=1,
@@ -72,6 +80,8 @@ class VisualStopRuntime:
         from replay_writer import WRITER
         WRITER.submit(directory / f'{time.time_ns()}.json', record)
         return frames if accepted else None, dict(accepted=accepted, single_attempt=self.prepared, validation=validation,
-                           reason=reason or ('Stop missed destination' if error > .05 else validation.get('reason', '')), acceptance_basis='validated_playback',
+                           reason='' if accepted else reason or ('Stop missed destination' if error > .05 else validation.get('reason', '')), acceptance_basis='minimum_guards' if self.prepared else 'validated_playback',
+                           policy=decision['policy'] if decision else 'strict_visual',
+                           warnings=decision['warnings'] if decision else [],
                            human_rating='unknown', visual_selection=selection,
                            arrival_error_m=error, travel_distance_m=float(np.linalg.norm(frames[-1][0, :2]-np.asarray(replay['pose'])[0, :2])))

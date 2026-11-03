@@ -74,6 +74,7 @@ class Action:
     begin_final_stop: bool = False
     begin_arrival: bool = False
     begin_stop_recovery: bool = False
+    begin_failure_relaxation: bool = False
     pose: np.ndarray | None = None
     seed: bool = False
     prime_walk: bool = False
@@ -117,6 +118,10 @@ class LocomotionCycle:
         self.recovery_end_s = None
         self.recovery_pose = None
         self.stop_failure_reason = ""
+        self.failure_relaxation_attempted = False
+        self.failure_relaxation_frames = []
+        self.failure_relaxation_index = 0
+        self.failure_relaxation_metrics = {}
         self._plants_updated_s = None
         self.last_plant_s: float | None = None
         self.settled_s: float | None = None
@@ -156,6 +161,10 @@ class LocomotionCycle:
     def begin_move(self, goal_xy, hold_stance: bool, move_id) -> None:
         # 速度・方向・接地条件を照合できない過去の停止距離は再利用しない。
         self.last_stop_distance_m = 0.0
+        self.failure_relaxation_attempted = False
+        self.failure_relaxation_frames = []
+        self.failure_relaxation_index = 0
+        self.failure_relaxation_metrics = {}
         self.course_direction = None
         self.course_position = None
         self.course_roots = deque(maxlen=12)
@@ -249,6 +258,15 @@ class LocomotionCycle:
         self.stop_failure_reason = ""
         self.last_stop_distance_m = float(metrics.get('travel_distance_m', 0.0))
         self.phase = FINAL_STEP
+
+    def note_failure_relaxation(self, frames, metrics):
+        self.failure_relaxation_metrics = metrics
+        if frames is None or not metrics.get('accepted'):
+            self.phase = STOP_FAILED
+            return
+        self.failure_relaxation_frames = frames
+        self.failure_relaxation_index = 0
+        self.phase = 'stop_relaxing'
 
     def stage_collect(self, frames, metrics, move_id, settle_seq):
         if self.phase != COLLECT_PREPARING or move_id != self.move_id or settle_seq != self.settle_seq:
@@ -372,6 +390,25 @@ class LocomotionCycle:
         if self.phase == STOP_FAILED:
             if self.recovery_pose is None:
                 self.recovery_pose = pose.copy()
+            if self.stop_mode == 'prepared' and not self.failure_relaxation_attempted:
+                self.failure_relaxation_attempted = True
+                self.phase = 'stop_relaxing'
+                action = self._action(self.recovery_pose, pose_out=self.recovery_pose, obs=obs)
+                action.begin_failure_relaxation = True
+                return action
+            return self._action(self.recovery_pose, pose_out=self.recovery_pose, seed=True, obs=obs)
+
+        if self.phase == 'stop_relaxing':
+            if not self.failure_relaxation_frames:
+                return self._action(self.recovery_pose, pose_out=self.recovery_pose, obs=obs)
+            frame = self.failure_relaxation_frames[self.failure_relaxation_index]
+            self.failure_relaxation_index += 1
+            if self.failure_relaxation_index == len(self.failure_relaxation_frames):
+                self.recovery_pose = frame.copy()
+                self.phase = 'stop_relaxed'
+            return self._action(frame, pose_out=frame, seed=self.phase == 'stop_relaxed', obs=obs)
+
+        if self.phase == 'stop_relaxed':
             return self._action(self.recovery_pose, pose_out=self.recovery_pose, seed=True, obs=obs)
 
         if self.phase == CONTACT_RECOVERY:
@@ -780,7 +817,7 @@ class LocomotionCycle:
         gait = {
             "event": self._event,
             "final_stop_metrics": {k: v for k, v in self.final_stop_metrics.items()
-                                   if k in ("accepted", "stage", "reason", "arrival_error_m", "travel_distance_m", "recovery_only")},
+                                   if k in ("accepted", "stage", "reason", "arrival_error_m", "travel_distance_m", "recovery_only", "policy", "warnings")},
             "stop_prediction_m": row['stop_prediction_m'],
             "stop_retry_count": self.stop_retry_count,
             "goal_error_m": row['goal_error_m'],

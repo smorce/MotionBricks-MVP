@@ -2,7 +2,7 @@
 from collections import deque
 from threading import Condition
 
-TERMINAL = {'idle', 'settled', 'stop_failed', 'collect_preparing', 'pose_done'}
+TERMINAL = {'idle', 'settled', 'stop_failed', 'stop_relaxed', 'collect_preparing', 'pose_done'}
 
 class FramePipeline:
     def __init__(self, capacity=120, prefill=90):

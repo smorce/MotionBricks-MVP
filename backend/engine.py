@@ -754,6 +754,14 @@ def _generation_worker(commands: Queue, publish, pipeline):
                 else:
                     cycle.note_final_stop(stop_frames, stop_metrics)
                     character.movement.reset_desired_velocity()
+            elif action.begin_failure_relaxation:
+                from failure_relaxation import generate_failure_relaxation
+                try:
+                    with TIMINGS.measure('failure_relaxation'):
+                        relaxed, relaxation_metrics = generate_failure_relaxation(character, stop_ground, rt, facing)
+                except Exception as exc:
+                    relaxed, relaxation_metrics = None, dict(accepted=False, reason=f'Failure relaxation failed: {exc}')
+                cycle.note_failure_relaxation(relaxed, relaxation_metrics)
             elif action.begin_stop_recovery:
                 try:
                     applied = _enter_arrival(character, action.pose, "F001", rt, wp, facing)
@@ -790,7 +798,12 @@ def _generation_worker(commands: Queue, publish, pipeline):
                 character.step(DT, _command(rt, facing, None))
             elif action.pose is not None:
                 _sync_pose(character, action.pose, wp, seed=action.seed)
+                if cycle.phase in ('stop_relaxing', 'stop_relaxed') and cycle.failure_relaxation_index:
+                    character.current_foot_contacts.assign(np.asarray(
+                        cycle.failure_relaxation_frames.contacts[cycle.failure_relaxation_index-1], dtype=np.float32))
                 if cycle.phase in ('final_step','stop_retry') and not action.seed:
+                    character.player.record_pose(DT,character.current_pose)
+                if cycle.phase == 'stop_relaxing' and not action.seed:
                     character.player.record_pose(DT,character.current_pose)
                 if action.seed:
                     character.movement.reset_desired_velocity()
@@ -814,9 +827,11 @@ def _generation_worker(commands: Queue, publish, pipeline):
             gait = action.gait or {}
             gait["phase"] = cycle.phase
             gait['stop_failure_reason'] = cycle.stop_failure_reason
+            gait['failure_relaxation'] = {name: value for name, value in cycle.failure_relaxation_metrics.items()
+                                          if name in ('accepted', 'reason', 'playback_rate', 'duration_seconds', 'root_drift_m')}
             gait['goal_error_m'] = distance
             gait['final_stop_metrics'] = {name: value for name, value in cycle.final_stop_metrics.items()
-                                          if name in ('accepted', 'stage', 'reason', 'arrival_error_m', 'travel_distance_m', 'recovery_only')}
+                                          if name in ('accepted', 'stage', 'reason', 'arrival_error_m', 'travel_distance_m', 'recovery_only', 'policy', 'warnings')}
             if gait.get("event") == "stop_requested":
                 emit(
                     {
