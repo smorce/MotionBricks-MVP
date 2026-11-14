@@ -38,6 +38,11 @@
       <input id="armAbduct" type="range" min="0" max="30" step="0.5" value="0">
       <label for="toeForward">つま先を正面へ <output id="toeForwardOut">0.0°</output></label>
       <input id="toeForward" type="range" min="0" max="40" step="0.5" value="0">
+      <label for="fingerCurl">指を軽く握る <output id="fingerCurlOut">0.0°</output></label>
+      <input id="fingerCurl" type="range" min="0" max="40" step="0.5" value="0">
+      <label for="ankleRoll">足首の左右の傾き <output id="ankleRollOut">0.0°</output></label>
+      <input id="ankleRoll" type="range" min="-15" max="15" step="0.5" value="0">
+      <p style="font-size:11px;color:#9aa6bf;margin:3px 0 7px">足首は正負どちらにも調整できます。0°が元の姿勢です。</p>
       <p id="stanceData">{"leg_adduct_deg":0.0,"arm_abduct_deg":0.0,"toe_forward_deg":0.0}</p>
       <button id="stanceCopy" type="button">この数値をコピー</button>
     </div>
