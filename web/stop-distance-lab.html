@@ -39,7 +39,7 @@ header{padding:19px 23px 10px;background:#151d2b;border-bottom:1px solid var(--e
 <div class="footer">注意：SOMA骨格の接地情報はロゼの靴底接触そのものではありません。動画や連続フレームで足滑りを確認してください。異なる候補の最終時刻は異なるため、同期再生では短い候補は最終姿勢を保持します。</div>
 <script type="module">
 import * as THREE from 'three';
-import {FINGER_CURL_DEFAULT_DEG,poseStance,stanceData} from './src/stance.js';
+import {poseStance,stanceFromSaved} from './src/stance.js';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {VRMLoaderPlugin,VRMUtils} from '@pixiv/three-vrm';
 
@@ -104,7 +104,7 @@ function apply(card,t){const {item,vrm}=card;if(!vrm)return;const pos=Math.max(0
  const start=card.firstRoot;vrm.scene.position.set(pose[0][0]-start[0],pose[0][2]-data.rig.rest[0][2],-(pose[0][1]-start[1]));vrm.scene.updateMatrixWorld(true);
  if(card.cameraBase){const shift=new THREE.Vector3(pose[0][0]-start[0],0,-(pose[0][1]-start[1]));card.camera.position.copy(card.cameraBase).add(shift);card.camera.lookAt(shift.x,1.05,shift.z)}
  applySomaRotations(vrm,data.rig,pose,card.restSource,card.restDest);
- const saved=JSON.parse(localStorage.getItem('roze.stanceAdjust')||'{}');const stance=stanceData({legDeg:saved.leg_adduct_deg,armDeg:saved.arm_abduct_deg,toeDeg:saved.toe_forward_deg,fingerDeg:Object.hasOwn(saved,'finger_curl_deg')?saved.finger_curl_deg:FINGER_CURL_DEFAULT_DEG,ankleDeg:saved.ankle_roll_deg});poseStance((name)=>vrm.humanoid.getNormalizedBoneNode(name),stance,1);vrm.update(0);card.values.travel.textContent=formatNum(Math.hypot(pose[0][0]-start[0],pose[0][1]-start[1]))+'m';
+ const saved=JSON.parse(localStorage.getItem('roze.stanceAdjust')||'{}');const stance=stanceFromSaved(saved);poseStance((name)=>vrm.humanoid.getNormalizedBoneNode(name),stance,1);vrm.update(0);card.values.travel.textContent=formatNum(Math.hypot(pose[0][0]-start[0],pose[0][1]-start[1]))+'m';
 }
 async function rebuild(){if(!data||!vrmFile)return;if(Number($('offset').value)>=data.candidates.length)$('offset').value='0';const token=++loadGeneration;playing=false;controls.play.disabled=controls.time.disabled=controls.shot.disabled=controls.export.disabled=true;controls.play.textContent='▶ 再生';clearCards();const shown=data.candidates.slice(Number($('offset').value),Number($('offset').value)+Number(controls.count.value));cards=shown.map(makeCard);status(`${shown.length}体のロゼを読み込み中…`);
  const objectUrl=URL.createObjectURL(vrmFile);try{for(const card of cards){await initCard(card,objectUrl,token);if(token!==loadGeneration)return}}catch(e){status(`読み込み失敗: ${e.message}`,true);return}finally{URL.revokeObjectURL(objectUrl)}

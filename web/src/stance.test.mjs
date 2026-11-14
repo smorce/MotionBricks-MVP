@@ -10,6 +10,7 @@ import {
   poseFingers,
   poseStance,
   stanceData,
+  stanceFromSaved,
   rollAnkles,
 } from './stance.js';
 
@@ -50,6 +51,15 @@ assert.deepEqual(stanceData({legDeg: 99, armDeg: -3, toeDeg: 50, fingerDeg: 80, 
 });
 assert.equal(stanceData({fingerDeg: 12.24, ankleDeg: 8.26}).finger_curl_deg, 12.2);
 assert.equal(stanceData({fingerDeg: 12.24, ankleDeg: 8.26}).ankle_roll_deg, 8.3);
+assert.deepEqual(stanceFromSaved({}), {
+  leg_adduct_deg: 11,
+  arm_abduct_deg: 8,
+  toe_forward_deg: 12.5,
+  finger_curl_deg: 9.5,
+  ankle_roll_deg: 12,
+});
+assert.equal(stanceFromSaved({leg_adduct_deg: 0}).leg_adduct_deg, 0);
+assert.equal(stanceFromSaved({leg_adduct_deg: 0}).finger_curl_deg, 9.5);
 
 const hanging = new THREE.Vector3(0.02, -0.55, 0.08);
 const leftArm = new THREE.Quaternion();

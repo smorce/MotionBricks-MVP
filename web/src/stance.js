@@ -5,7 +5,11 @@ export const LEG_ADDUCT_MAX_DEG = 24;
 export const ARM_ABDUCT_MAX_DEG = 30;
 export const TOE_FORWARD_MAX_DEG = 40;
 export const FINGER_CURL_MAX_DEG = 45;
-export const FINGER_CURL_DEFAULT_DEG = 20;
+export const LEG_ADDUCT_DEFAULT_DEG = 11;
+export const ARM_ABDUCT_DEFAULT_DEG = 8;
+export const TOE_FORWARD_DEFAULT_DEG = 12.5;
+export const FINGER_CURL_DEFAULT_DEG = 9.5;
+export const ANKLE_ROLL_DEFAULT_DEG = 12;
 export const ANKLE_ROLL_MIN_DEG = -15;
 export const ANKLE_ROLL_MAX_DEG = 15;
 
@@ -53,6 +57,18 @@ export function stanceData({legDeg = 0, armDeg = 0, toeDeg = 0, fingerDeg = 0, a
     finger_curl_deg: Number(clampDegrees(fingerDeg, 0, FINGER_CURL_MAX_DEG).toFixed(1)),
     ankle_roll_deg: Number(clampDegrees(ankleDeg, ANKLE_ROLL_MIN_DEG, ANKLE_ROLL_MAX_DEG).toFixed(1)),
   };
+}
+
+/** 保存がない項目は、画面で決めた初期姿勢を使う。明示した 0 は維持する。 */
+export function stanceFromSaved(saved = {}) {
+  const pick = (key, fallback) => Object.hasOwn(saved, key) ? saved[key] : fallback;
+  return stanceData({
+    legDeg: pick('leg_adduct_deg', LEG_ADDUCT_DEFAULT_DEG),
+    armDeg: pick('arm_abduct_deg', ARM_ABDUCT_DEFAULT_DEG),
+    toeDeg: pick('toe_forward_deg', TOE_FORWARD_DEFAULT_DEG),
+    fingerDeg: pick('finger_curl_deg', FINGER_CURL_DEFAULT_DEG),
+    ankleDeg: pick('ankle_roll_deg', ANKLE_ROLL_DEFAULT_DEG),
+  });
 }
 
 /**

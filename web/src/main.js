@@ -7,7 +7,7 @@ import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {VRMLoaderPlugin, VRMUtils} from '@pixiv/three-vrm';
 import {threePointToRuntime} from './coords.js';
-import {FINGER_CURL_DEFAULT_DEG, poseAnkles, poseFingers, poseStance, stanceData} from './stance.js';
+import {poseAnkles, poseFingers, poseStance, stanceData, stanceFromSaved} from './stance.js';
 import {IdleHandoff} from './idleHandoff.js';
 import {GroundedIdle} from './groundedIdle.js';
 import {emptyOwner, reduceOwner, shouldApplyStance} from './poseOwner.js';
@@ -92,13 +92,7 @@ function restoreStance(){
       if(legacy!=null) saved={leg_adduct_deg:Number(legacy)}
     }
   }catch{ saved={} }
-  const data=stanceData({
-    legDeg:saved.leg_adduct_deg,
-    armDeg:saved.arm_abduct_deg,
-    toeDeg:saved.toe_forward_deg,
-    fingerDeg:Object.hasOwn(saved, 'finger_curl_deg') ? saved.finger_curl_deg : FINGER_CURL_DEFAULT_DEG,
-    ankleDeg:saved.ankle_roll_deg,
-  })
+  const data=stanceFromSaved(saved)
   if(stanceInputs.leg) stanceInputs.leg.value=String(data.leg_adduct_deg)
   if(stanceInputs.arm) stanceInputs.arm.value=String(data.arm_abduct_deg)
   if(stanceInputs.toe) stanceInputs.toe.value=String(data.toe_forward_deg)

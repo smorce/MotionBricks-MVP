@@ -32,18 +32,18 @@
     <select id="stopMode"><option value="prepared" selected>停止準備 → F001接続（新実験）</option><option value="visual">目視11候補・厳密一致（前の実験）</option></select>
     <p style="font-size:12px;white-space:pre-wrap;color:#bde0d2" id="visualStopStatus">新実験：停止準備からF001へ接続。自然さは目視でご判断ください。</p>
     <div id="stance">
-      <label for="legAdduct">足の閉じ具合 <output id="legAdductOut">0.0°</output></label>
-      <input id="legAdduct" type="range" min="0" max="24" step="0.5" value="0">
-      <label for="armAbduct">手の横幅 <output id="armAbductOut">0.0°</output></label>
-      <input id="armAbduct" type="range" min="0" max="30" step="0.5" value="0">
-      <label for="toeForward">つま先を正面へ <output id="toeForwardOut">0.0°</output></label>
-      <input id="toeForward" type="range" min="0" max="40" step="0.5" value="0">
-      <label for="fingerCurl">指の握り <output id="fingerCurlOut">20.0°</output></label>
-      <input id="fingerCurl" type="range" min="0" max="45" step="0.5" value="20">
-      <label for="ankleRoll">足裏の傾き <output id="ankleRollOut">0.0°</output></label>
-      <input id="ankleRoll" type="range" min="-15" max="15" step="0.5" value="0">
+      <label for="legAdduct">足の閉じ具合 <output id="legAdductOut">11.0°</output></label>
+      <input id="legAdduct" type="range" min="0" max="24" step="0.5" value="11">
+      <label for="armAbduct">手の横幅 <output id="armAbductOut">8.0°</output></label>
+      <input id="armAbduct" type="range" min="0" max="30" step="0.5" value="8">
+      <label for="toeForward">つま先を正面へ <output id="toeForwardOut">12.5°</output></label>
+      <input id="toeForward" type="range" min="0" max="40" step="0.5" value="12.5">
+      <label for="fingerCurl">指の握り <output id="fingerCurlOut">9.5°</output></label>
+      <input id="fingerCurl" type="range" min="0" max="45" step="0.5" value="9.5">
+      <label for="ankleRoll">足裏の傾き <output id="ankleRollOut">外 12.0°</output></label>
+      <input id="ankleRoll" type="range" min="-15" max="15" step="0.5" value="12">
       <p style="font-size:11px;color:#9aa6bf;margin:3px 0 7px">正で足裏が外側、負で内側。0°が元の姿勢です。</p>
-      <p id="stanceData">{"leg_adduct_deg":0.0,"arm_abduct_deg":0.0,"toe_forward_deg":0.0,"finger_curl_deg":20.0,"ankle_roll_deg":0.0}</p>
+      <p id="stanceData">{"leg_adduct_deg":11.0,"arm_abduct_deg":8.0,"toe_forward_deg":12.5,"finger_curl_deg":9.5,"ankle_roll_deg":12.0}</p>
       <button id="stanceCopy" type="button">この数値をコピー</button>
     </div>
     <label>ロゼのVRMファイル <input id="vrmFile" type="file" accept=".vrm"></label>
