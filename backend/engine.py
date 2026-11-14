@@ -18,6 +18,7 @@ from queue import Empty, Queue
 
 import numpy as np
 from timings import TIMINGS
+from frame_pipeline import TERMINAL
 
 from locomotion_cycle import IDLE, LocomotionCycle, POSE_DONE, SETTLED
 from quats import RX90, quat_mul, quat_to_mat
@@ -459,6 +460,59 @@ def _stream_selection(selection):
     return {name: value for name, value in selection.items() if name not in ('state_features', 'review')}
 
 
+def _intake_output(output, pipeline, epoch, publish, max_packets=64, consumed=None):
+    """生成済みフレームを、1回のループでまとめて配信バッファへ移す。"""
+    count = 0
+    skipped = 0
+    while count < max_packets and skipped < 512:
+        if pipeline.frames and pipeline.frames[-1][0].get('phase') in TERMINAL:
+            break
+        try:
+            generated = output.get_nowait()
+        except Empty:
+            break
+        if generated[0] == 'direct':
+            publish(generated[1])
+            continue
+        identity, message, checkpoint, events, timing = generated
+        if identity != pipeline.epoch or identity != epoch.value:
+            skipped += 1
+            if consumed is not None:
+                consumed.value += 1
+            continue
+        count += 1
+        if timing is not None:
+            publish(dict(type='generation_metrics', **timing))
+        for event in events:
+            pipeline.event(event, identity)
+        pipeline.offer(message, checkpoint, identity)
+        if len(pipeline.frames) >= pipeline.capacity or (
+            pipeline.frames and pipeline.frames[-1][0].get('phase') in TERMINAL
+        ):
+            break
+    return count
+
+
+def _discard_queued_frames(output, consumed=None):
+    """新しい移動要求の前に、待機中の旧フレームだけを捨てる。"""
+    direct = []
+    discarded = 0
+    while True:
+        try:
+            generated = output.get_nowait()
+        except Empty:
+            break
+        if generated[0] == 'direct':
+            direct.append(generated)
+        else:
+            discarded += 1
+    if consumed is not None and discarded:
+        consumed.value += discarded
+    for generated in direct:
+        output.put_nowait(generated)
+    return discarded
+
+
 def _command(rt, facing: np.ndarray, movement: np.ndarray | None):
     return rt["LocomotionCommand"](
         facing_direction=np.asarray(facing, dtype=np.float32),
@@ -467,11 +521,12 @@ def _command(rt, facing: np.ndarray, movement: np.ndarray | None):
     )
 
 
-def _produce_frames(pending, output, epoch, closed):
-    from frame_pipeline import ProcessOutput
-    proxy = ProcessOutput(output, epoch, closed)
+def _produce_frames(pending, output, epoch, closed, consumed=None, wake=None):
+    from frame_pipeline import GenerationPacer, ProcessOutput
+    pacer = GenerationPacer(consumed, wake) if consumed is not None and wake is not None else None
+    proxy = ProcessOutput(output, epoch, closed, pacer=pacer)
     try:
-        _generation_worker(pending, lambda message: output.put(('direct', message)), proxy)
+        _generation_worker(pending, lambda message: output.put(('direct', message)), proxy, pacer=pacer)
     except BaseException as exc:
         output.put(('direct', {'type': 'error', 'message': str(exc)}))
     finally:
@@ -480,7 +535,7 @@ def _produce_frames(pending, output, epoch, closed):
 
 
 def worker(commands: Queue, publish):
-    from frame_pipeline import FramePipeline, TERMINAL, CheckpointHistory
+    from frame_pipeline import FramePipeline, CheckpointHistory
     import multiprocessing
     from frame_clock import FrameClock
     clock = FrameClock()
@@ -490,18 +545,22 @@ def worker(commands: Queue, publish):
         timer = ctypes.WinDLL("winmm")
         timer.timeBeginPeriod(1)
     from stop_phase import apply_nav_command
-    pipeline = FramePipeline(capacity=240, prefill=180)
+    pipeline = FramePipeline(capacity=240, prefill=6)
+    pipeline.begin(-1)
     context = multiprocessing.get_context('spawn')
     pending = context.Queue()
     output = context.Queue(maxsize=120)
     epoch = context.Value('q', -1)
+    consumed = context.Value('q', 0)
+    wake = context.Event()
     closed = context.Event()
     state = NavState()
     last_checkpoint = None
     checkpoints = CheckpointHistory()
     sequence = 0
     last_delivery = None
-    process = context.Process(target=_produce_frames, args=(pending, output, epoch, closed), name='motion-inference', daemon=True)
+    last_published_move_id = -1
+    process = context.Process(target=_produce_frames, args=(pending, output, epoch, closed, consumed, wake), name='motion-inference', daemon=True)
     process.start()
     next_tick = time.perf_counter()
     try:
@@ -519,43 +578,35 @@ def worker(commands: Queue, publish):
                 result = apply_nav_command(state, command)
                 if result.quit:
                     pending.put(command)
+                    wake.set()
                     return
                 state = result.state
                 if result.move_to is not None:
                     epoch.value = state.move_id
-                    pipeline.begin(state.move_id)
+                    consumed.value += pipeline.begin(state.move_id)
+                    _discard_queued_frames(output, consumed=consumed)
                     command = dict(command, _checkpoint=resume_checkpoint)
                 pending.put(command)
+                wake.set()
             intake_started = time.perf_counter()
-            for _ in range(4):
-                if len(pipeline.frames) >= pipeline.capacity or (pipeline.frames and pipeline.frames[-1][0].get('phase') in TERMINAL):
-                    break
-                try:
-                    generated = output.get_nowait()
-                except Empty:
-                    break
-                if generated[0] == 'direct':
-                    publish(generated[1])
-                    continue
-                identity, message, checkpoint, events, timing = generated
-                if identity != pipeline.epoch:
-                    continue
-                if timing is not None:
-                    publish(dict(type='generation_metrics', **timing))
-                for event in events:
-                    pipeline.event(event, identity)
-                pipeline.offer(message, checkpoint, identity)
+            _intake_output(output, pipeline, epoch, publish, consumed=consumed)
             TIMINGS.record("frame_intake", (time.perf_counter()-intake_started)*1000)
             if not process.is_alive() and output.empty():
                 raise RuntimeError('Inference process stopped')
             packet = pipeline.take()
+            awaiting_move = state.move_id is not None and last_published_move_id != state.move_id
             if packet is not None:
+                consumed.value += 1
+                wake.set()
                 frame, last_checkpoint, events = packet
                 from gait_log import GAIT_LOG
                 row = frame.pop('_log_row', None)
                 if row is not None:
                     GAIT_LOG.add(row)
-                checkpoints.add(sequence, frame.get('gait', {}).get('move_id'), last_checkpoint)
+                frame_move_id = frame.get('gait', {}).get('move_id')
+                if frame_move_id is not None:
+                    last_published_move_id = frame_move_id
+                checkpoints.add(sequence, frame_move_id, last_checkpoint)
                 frame['sequence'] = sequence
                 frame['simulation_time'] = sequence * DT
                 frame['pipeline_underflows'] = pipeline.underflows
@@ -567,6 +618,12 @@ def worker(commands: Queue, publish):
                 publish(frame)
                 for event in events:
                     publish(event)
+                if awaiting_move and last_published_move_id == state.move_id:
+                    next_tick = time.perf_counter()
+            if state.move_id is not None and last_published_move_id != state.move_id and not pipeline.playing:
+                time.sleep(0.002)
+                next_tick = time.perf_counter()
+                continue
             next_tick += DT
             delay = next_tick - time.perf_counter()
             if delay > 0:
@@ -577,6 +634,7 @@ def worker(commands: Queue, publish):
         clock.close()
         pipeline.close()
         pending.put({'type': 'quit'})
+        wake.set()
         closed.set()
         process.join(timeout=3)
         if process.is_alive():
@@ -586,7 +644,44 @@ def worker(commands: Queue, publish):
             timer.timeEndPeriod(1)
 
 
-def _generation_worker(commands: Queue, publish, pipeline):
+def _warmup_runtime(engine, pool, rt, wp, parents, names, stop_ground):
+    """初回クリック時のコンパイル・メタデータ取得遅延を起動時に吸収する。"""
+    from stop_replay import _static_replay_metadata
+    _static_replay_metadata()
+    scratch = rt["SOMACharacter"](
+        engine,
+        asset_pool=pool,
+        modes=rt["DEFAULT_LOCOMOTION_MODES"],
+        idle_paths=(rt["DEFAULT_IDLE_CLIPS"][0],),
+        crouch_idle_paths=rt["DEFAULT_CROUCH_IDLE_CLIPS"],
+    )
+    facing = np.array([1.0, 0.0, 0.0], dtype=np.float32)
+    _prime_walk(scratch, facing)
+    scratch.step(DT, _command(rt, facing, facing))
+    pose = scratch.current_pose.numpy().reshape((-1, 7)).copy()
+    target = build_stop_target(pose, pose[0, :2] + np.array([0.4, 0.0]), parents, names, stop_ground)
+    if target is not None:
+        targets = wp.array(
+            np.repeat(target[None].astype(np.float32), rt["MODEL_POSES_PER_TOKEN"], axis=0),
+            dtype=wp.transform,
+            device=engine.device,
+        )
+        scratch.generate_to_target_poses(
+            targets,
+            rt["TargetPoseInferenceParams"](
+                transition_early_by_frames=0,
+                num_poses_to_use=1,
+                ik_pin_mask=rt["IKPin"].LEFT_FOOT,
+            ),
+        )
+        from stop_contact_lock import StopContactLock
+        lock = StopContactLock(pose, scratch.current_foot_contacts.numpy().reshape(-1), parents, names, stop_ground)
+        scratch._sample_playback(DT)
+        lock.apply(scratch, rt)
+    scratch.clear_ik_pins()
+
+
+def _generation_worker(commands: Queue, publish, pipeline, pacer=None):
     """GPU と Warp は、この単一推論プロセスだけが所有する。"""
     rt = _load_runtime()
     wp = rt["wp"]
@@ -619,6 +714,7 @@ def _generation_worker(commands: Queue, publish, pipeline):
         parents = [skeleton.joint_parent(i) for i in range(skeleton.num_joints)]
         names = list(skeleton.joint_names)
         stop_ground = calibrate_stop_ground(rest, parents, names)
+        _warmup_runtime(engine, pool, rt, wp, parents, names, stop_ground)
         publish(
             {
                 "type": "rig",
@@ -731,7 +827,7 @@ def _generation_worker(commands: Queue, publish, pipeline):
                 generation_start = time.perf_counter()
                 try:
                     if visual_stop:
-                        stop_frames, stop_metrics = visual_stop.generate(character, cycle.final_stop_goal, stop_ground, rt, destination=cycle.goal)
+                        stop_frames, stop_metrics = visual_stop.generate(character, cycle.final_stop_goal, stop_ground, rt, destination=cycle.goal, cancelled=lambda: not pipeline.is_current(cycle.move_id))
                     else:
                         stop_control = dict(move_id=cycle.move_id, settle_seq=cycle.settle_seq,
                                             source_frame=tick, retry_count=cycle.stop_retry_count,
@@ -885,6 +981,11 @@ def _generation_worker(commands: Queue, publish, pipeline):
                 )
                 frames = 0
                 report_at = now
+            if pacer is not None:
+                pacer.wait_if_needed(
+                    cycle.phase,
+                    lambda: pipeline.is_current(cycle.move_id) and commands.empty(),
+                )
 
 
 

@@ -373,16 +373,52 @@ def _clamp_support(pose, parents, names, state: StepState):
     return pose
 
 
+from functools import lru_cache
+
+
+@lru_cache(maxsize=16)
+def _foot_chain_plan(parents: tuple[int, ...], names: tuple[str, ...]):
+    index = {name: i for i, name in enumerate(names)}
+    targets = {
+        side: (index[CHAINS[side][2]], index[TOES[side]])
+        for side in CHAINS
+    }
+    needed = set()
+    for ankle, toe in targets.values():
+        for joint in (ankle, toe):
+            cur = joint
+            while cur >= 0 and cur not in needed:
+                needed.add(cur)
+                cur = parents[cur]
+    order = tuple(sorted(needed)) if all(parents[j] < j for j in needed if parents[j] >= 0) else None
+    return order, targets
+
+
 def foot_points(pose, parents, names) -> dict[str, dict[str, np.ndarray]]:
-    index = joint_index(names)
-    pos, _rot = fk(pose, parents)
-    points = {}
-    for side, chain in CHAINS.items():
-        points[side] = {
-            "ankle": pos[index[chain[2]]].copy(),
-            "toe": pos[index[TOES[side]]].copy(),
+    order, targets = _foot_chain_plan(tuple(parents), tuple(names))
+    if order is None:
+        pos, _rot = fk(pose, parents)
+        return {
+            side: {"ankle": pos[ankle].copy(), "toe": pos[toe].copy()}
+            for side, (ankle, toe) in targets.items()
         }
-    return points
+    pose_arr = np.asarray(pose, dtype=np.float64)
+    pos = {}
+    rot = {}
+    for joint in order:
+        local_r = quat_to_mat(pose_arr[joint, 3:7])
+        local_t = pose_arr[joint, :3]
+        parent = parents[joint]
+        if parent < 0:
+            rot[joint] = local_r
+            pos[joint] = local_t.copy()
+        else:
+            rot[joint] = rot[parent] @ local_r
+            pos[joint] = pos[parent] + rot[parent] @ local_t
+    return {
+        side: {"ankle": pos[ankle].copy(), "toe": pos[toe].copy()}
+        for side, (ankle, toe) in targets.items()
+    }
 
 
 def default_parents():

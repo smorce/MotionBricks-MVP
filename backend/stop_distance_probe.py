@@ -42,12 +42,14 @@ def state_features(replay):
                 ground=replay['metadata']['ground'])
 
 
-def pure_generate(character, replay, spec, rt, idle, *, contact_lock=False):
+def pure_generate(character, replay, spec, rt, idle, *, contact_lock=False, cancelled=None):
     from engine import DT
     from final_stop import build_stop_target, contact_points, foot_points
     from step_cycle import align_pose_facing, pose_facing
     from quats import quat_mul
     from stop_runtime import GeneratedStop
+    if cancelled is not None and cancelled():
+        raise RuntimeError('Stop generation cancelled')
     wp = rt['wp']
     data = replay['metadata']
     original = np.asarray(replay['pose'])
@@ -97,6 +99,8 @@ def pure_generate(character, replay, spec, rt, idle, *, contact_lock=False):
         lock = StopContactLock(original, data['contacts'], data['parents'], data['names'], data['ground'])
     frames, contacts = [], []
     for _ in range(480):
+        if cancelled is not None and cancelled():
+            raise RuntimeError('Stop generation cancelled')
         character._sample_playback(DT)
         if spec['pinned']:
             character._target_pose_ik_corrector.apply(character.current_pose, 1.0, stream=character.engine.stream)

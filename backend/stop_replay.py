@@ -5,7 +5,29 @@ from pathlib import Path
 import numpy as np
 import hashlib
 import random
+import subprocess
 from functools import lru_cache
+
+
+from engine import find_motionbricks_root
+
+
+@lru_cache(maxsize=1)
+def _static_replay_metadata():
+    """停止記録で毎回変わらない実行環境情報を一度だけ読む。"""
+    root = find_motionbricks_root()
+    mapping = Path(__file__).resolve().parents[1] / "web/src/main.js"
+    return dict(
+        runtime_commit=subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=root, text=True
+        ).strip(),
+        vrm_mapping_sha256=hashlib.sha256(mapping.read_bytes()).hexdigest(),
+        vrm_mapping_source=mapping.read_text(encoding="utf-8"),
+        vrm_transform_sources={
+            name: (mapping.parent / name).read_text(encoding="utf-8")
+            for name in ("coords.js", "stance.js", "idleHandoff.js", "groundedIdle.js", "somaRetarget.js")
+        },
+    )
 
 
 def save_replay(path, *, pose, history, delta_times, metadata):
@@ -84,9 +106,6 @@ def capture_replay(character, goal, ground, *, control=None):
     from step_cycle import foot_points
     from dataclasses import asdict
     from motionbricks.model.config import MotionBricksInferenceConfig
-    from engine import find_motionbricks_root
-    import subprocess
-
     names = list(character.skeleton.joint_names)
     parents = [character.skeleton.joint_parent(i) for i in range(len(names))]
     pose = character.current_pose.numpy().reshape((-1, 7)).copy()
@@ -94,10 +113,7 @@ def capture_replay(character, goal, ground, *, control=None):
     context = character.engine.create_input(character.skeleton)
     context.update_from_recorder(history, stream=character.engine.stream)
     target = build_stop_target(pose, goal, parents, names, ground)
-    root = find_motionbricks_root()
-    version = subprocess.check_output(
-        ["git", "rev-parse", "HEAD"], cwd=root, text=True
-    ).strip()
+    static_metadata = _static_replay_metadata()
     rng = np.random.get_state()
     metadata = dict(
         goal=np.asarray(goal).tolist(),
@@ -112,7 +128,6 @@ def capture_replay(character, goal, ground, *, control=None):
         support=stop_support(pose, goal, parents, names),
         f001=None if target is None else target.tolist(),
         inference=asdict(MotionBricksInferenceConfig()),
-        runtime_commit=version,
         model=model_manifest(),
         numpy_rng=[rng[0], rng[1].tolist(), *rng[2:]],
         python_rng=random.getstate(),
@@ -121,11 +136,7 @@ def capture_replay(character, goal, ground, *, control=None):
         recent_poses=history.poses.numpy()[-4:].tolist(),
         model_context_poses=context.poses.numpy().tolist(),
     )
-    mapping = Path(__file__).resolve().parents[1] / "web/src/main.js"
-    metadata["vrm_mapping_sha256"] = hashlib.sha256(mapping.read_bytes()).hexdigest()
-    metadata["vrm_mapping_source"] = mapping.read_text(encoding="utf-8")
-    metadata['vrm_transform_sources']={name:(mapping.parent/name).read_text(encoding='utf-8')
-                                      for name in ('coords.js','stance.js','idleHandoff.js','groundedIdle.js','somaRetarget.js')}
+    metadata.update(static_metadata)
     return dict(
         schema_version=1,
         pose=pose.tolist(),

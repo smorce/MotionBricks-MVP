@@ -20,7 +20,16 @@ class StopContactLock:
         self.parents, self.names, self.ground = parents, names, ground
         self.anchors = {}
         self.releasing = {}
+        self._gpu_anchors = {}
         self.update(original, contacts)
+
+    def _anchor_array(self, side, anchor, wp, device):
+        cached = self._gpu_anchors.get(side)
+        if cached is not None and cached[0] is anchor and cached[1] == id(device):
+            return cached[2]
+        arr = wp.array(anchor.astype(np.float32), dtype=wp.transform, device=device)
+        self._gpu_anchors[side] = (anchor, id(device), arr)
+        return arr
 
     def update(self, pose, contacts):
         feet = contact_points(foot_points(pose, self.parents, self.names), self.ground)
@@ -48,15 +57,20 @@ class StopContactLock:
         self.update(pose, contacts)
         constraints = {side: (anchor, 1.) for side, anchor in self.anchors.items()}
         constraints.update(self.releasing)
-        for side, (anchor, weight) in constraints.items():
-            mask = rt['IKPin'].LEFT_FOOT if side == 'left' else rt['IKPin'].RIGHT_FOOT
-            corrector.capture_pins(wp.array(anchor.astype(np.float32), dtype=wp.transform, device=character.engine.device),
-                                   mask, stream=character.engine.stream)
-            corrector.apply(character.current_pose, weight, stream=character.engine.stream)
-        pose = character.current_pose.numpy().reshape((-1, 7))
-        for side, anchor in floor_targets(pose, self.parents, self.names, self.ground).items():
+        if constraints:
+            for side, (anchor, weight) in constraints.items():
+                mask = rt['IKPin'].LEFT_FOOT if side == 'left' else rt['IKPin'].RIGHT_FOOT
+                corrector.capture_pins(
+                    self._anchor_array(side, anchor, wp, character.engine.device),
+                    mask, stream=character.engine.stream,
+                )
+                corrector.apply(character.current_pose, weight, stream=character.engine.stream)
+            pose = character.current_pose.numpy().reshape((-1, 7))
+        targets = floor_targets(pose, self.parents, self.names, self.ground)
+        for side, anchor in targets.items():
             mask = rt['IKPin'].LEFT_FOOT if side == 'left' else rt['IKPin'].RIGHT_FOOT
             corrector.capture_pins(wp.array(anchor.astype(np.float32), dtype=wp.transform, device=character.engine.device),
                                    mask, stream=character.engine.stream)
             corrector.apply(character.current_pose, 1., stream=character.engine.stream)
-        corrector.clear_pins()
+        if constraints or targets:
+            corrector.clear_pins()

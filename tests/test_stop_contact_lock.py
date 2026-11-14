@@ -43,3 +43,38 @@ class StopContactLockTests(unittest.TestCase):
         pose[0, 2] += .1
         lock = StopContactLock(pose, [1, 1, 1, 1], parents, names, ground)
         self.assertFalse(lock.anchors)
+
+    def test_apply_reuses_gpu_anchor_arrays_without_reallocating_each_frame(self):
+        from types import SimpleNamespace
+        pose, parents, names = standing_pose()
+        ground = calibrate_stop_ground(pose, parents, names)
+        lock = StopContactLock(pose, [1, 1, 1, 1], parents, names, ground)
+
+        wp_calls = []
+
+        class FakeWpArray:
+            def __init__(self, data, **kwargs):
+                wp_calls.append(kwargs)
+                self.data = data
+
+        class FakeCorrector:
+            def capture_pins(self, arr, mask, stream=None): pass
+            def apply(self, target, weight, stream=None): pass
+            def clear_pins(self): pass
+
+        character = SimpleNamespace(
+            current_pose=SimpleNamespace(numpy=lambda: pose.copy()),
+            current_foot_contacts=SimpleNamespace(numpy=lambda: np.array([1.0, 1.0, 1.0, 1.0])),
+            engine=SimpleNamespace(device='cuda:0', stream=None),
+            _target_pose_ik_corrector=FakeCorrector(),
+        )
+        rt = {
+            'wp': SimpleNamespace(array=lambda data, **kw: FakeWpArray(data, **kw), transform='tx'),
+            'IKPin': SimpleNamespace(LEFT_FOOT=1, RIGHT_FOOT=2),
+        }
+        lock.apply(character, rt)
+        first_allocs = len(wp_calls)
+        lock.apply(character, rt)
+        lock.apply(character, rt)
+        self.assertEqual(first_allocs, 2)
+        self.assertEqual(len(wp_calls), 2)

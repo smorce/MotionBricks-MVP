@@ -99,6 +99,40 @@ def world_from_locals(parents: list[int], translations: np.ndarray, rotations: n
     return pos, rot
 
 
+def world_from_locals_batch(parents: list[int], translations: np.ndarray, rotations: np.ndarray):
+    """複数フレームの順運動学をバッチ計算する。"""
+    translations = np.asarray(translations, dtype=np.float64)
+    rotations = np.asarray(rotations, dtype=np.float64)
+    if not all(parent < joint for joint, parent in enumerate(parents)):
+        results = [world_from_locals(parents, t, r) for t, r in zip(translations, rotations)]
+        return np.stack([p for p, _ in results]), np.stack([r for _, r in results])
+    n_frames, n_joints = translations.shape[:2]
+    norms = np.linalg.norm(rotations, axis=-1, keepdims=True)
+    safe = np.where(norms < 1e-12, np.array([0.0, 0.0, 0.0, 1.0]), rotations / np.maximum(norms, 1e-12))
+    x, y, z, w = safe[..., 0], safe[..., 1], safe[..., 2], safe[..., 3]
+    local_r = np.empty((n_frames, n_joints, 3, 3), dtype=np.float64)
+    local_r[..., 0, 0] = 1.0 - 2.0 * (y * y + z * z)
+    local_r[..., 0, 1] = 2.0 * (x * y - z * w)
+    local_r[..., 0, 2] = 2.0 * (x * z + y * w)
+    local_r[..., 1, 0] = 2.0 * (x * y + z * w)
+    local_r[..., 1, 1] = 1.0 - 2.0 * (x * x + z * z)
+    local_r[..., 1, 2] = 2.0 * (y * z - x * w)
+    local_r[..., 2, 0] = 2.0 * (x * z - y * w)
+    local_r[..., 2, 1] = 2.0 * (y * z + x * w)
+    local_r[..., 2, 2] = 1.0 - 2.0 * (x * x + y * y)
+    pos = np.zeros((n_frames, n_joints, 3), dtype=np.float64)
+    rot = np.zeros((n_frames, n_joints, 3, 3), dtype=np.float64)
+    for joint, parent in enumerate(parents):
+        if parent < 0:
+            rot[:, joint] = local_r[:, joint]
+            pos[:, joint] = translations[:, joint]
+        else:
+            parent_r = rot[:, parent]
+            rot[:, joint] = parent_r @ local_r[:, joint]
+            pos[:, joint] = pos[:, parent] + np.einsum('fij,fj->fi', parent_r, translations[:, joint])
+    return pos, rot
+
+
 def locals_from_world(parents: list[int], pos: np.ndarray, rot: np.ndarray):
     translations = np.zeros((len(parents), 3), dtype=np.float64)
     rotations = np.zeros((len(parents), 4), dtype=np.float64)

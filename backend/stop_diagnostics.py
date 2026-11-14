@@ -24,14 +24,33 @@ def diagnose_stop(
     world=None,
 ):
     from final_stop import contact_points
-    from step_cycle import fk
+    from soma_skeleton import world_from_locals_batch
 
     if world is None:
-        world=[fk(p,parents) for p in [original,*frames]]
+        all_poses = np.asarray([original, *frames], dtype=np.float64)
+        pos_batch, rot_batch = world_from_locals_batch(parents, all_poses[:, :, :3], all_poses[:, :, 3:7])
+        world = list(zip(pos_batch, rot_batch))
+
+    index = {name: i for i, name in enumerate(names)}
+    leg_indices = {
+        side: (index[side + "Leg"], index[side + "Shin"], index[side + "Foot"])
+        for side in ("Left", "Right")
+    }
+    foot_indices = {side: index[side.title() + "Foot"] for side in ("left", "right")}
+    toe_indices = {side: index[side.title() + "ToeBase"] for side in ("left", "right")}
 
     points = [
-        contact_points(points_from_world(positions,names), calibration)
-        for positions,_ in world
+        contact_points(
+            {
+                side: {
+                    "ankle": positions[foot_indices[side]].copy(),
+                    "toe": positions[toe_indices[side]].copy(),
+                }
+                for side in ("left", "right")
+            },
+            calibration,
+        )
+        for positions, _ in world
     ]
     floor = calibration["floor_z"]
     checks = {}
@@ -53,12 +72,19 @@ def diagnose_stop(
     angles = []
     sole_up=[]
     _,initial_rotations=world[0]
+    foot_up_local = {
+        side: np.asarray(
+            calibration.get("foot_up_local", {}).get(
+                side,
+                initial_rotations[foot_indices[side]].T @ np.array([0.0, 0.0, 1.0]),
+            )
+        )
+        for side in ("left", "right")
+    }
     for frame,(positions,world_rotations) in zip(frames,world[1:]):
         row = {}
-        for side in ("Left", "Right"):
-            hip, knee, ankle = [
-                positions[names.index(side + p)] for p in ("Leg", "Shin", "Foot")
-            ]
+        for side, (hip_i, knee_i, ankle_i) in leg_indices.items():
+            hip, knee, ankle = positions[hip_i], positions[knee_i], positions[ankle_i]
             a, b = knee - hip, ankle - knee
             row[side.lower()] = float(
                 np.degrees(
@@ -73,9 +99,7 @@ def diagnose_stop(
                 )
             )
         angles.append(row)
-        sole_up.append({side:float((world_rotations[names.index(side.title()+'Foot')]@
-            np.asarray(calibration.get('foot_up_local',{}).get(side,
-                initial_rotations[names.index(side.title()+'Foot')].T@np.array([0.,0.,1.]))))[2])
+        sole_up.append({side:float((world_rotations[foot_indices[side]]@foot_up_local[side])[2])
             for side in ('left','right')})
     record(
         "knees",

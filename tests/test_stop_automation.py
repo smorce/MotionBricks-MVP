@@ -138,3 +138,36 @@ class StopAutomationTests(unittest.TestCase):
             a, b = load_replay(path), load_replay(path)
             a["history"][0][0][0] = 999
             self.assertNotEqual(a["history"], b["history"])
+
+    def test_batch_fk_matches_single_frame_fk(self):
+        from soma_skeleton import world_from_locals, world_from_locals_batch
+
+        pose, parents, _names = standing_pose()
+        rng = np.random.default_rng(7)
+        poses = np.repeat(pose[None], 12, axis=0)
+        poses[:, 0, :3] += rng.normal(scale=0.1, size=(12, 3))
+        q = poses[:, :, 3:] + rng.normal(scale=0.05, size=(12, len(parents), 4))
+        poses[:, :, 3:] = q / np.linalg.norm(q, axis=-1, keepdims=True)
+
+        batch_pos, batch_rot = world_from_locals_batch(parents, poses[:, :, :3], poses[:, :, 3:])
+        for i, frame in enumerate(poses):
+            pos, rot = world_from_locals(parents, frame[:, :3], frame[:, 3:])
+            np.testing.assert_allclose(batch_pos[i], pos, atol=1e-12)
+            np.testing.assert_allclose(batch_rot[i], rot, atol=1e-12)
+
+    def test_fast_foot_points_matches_full_fk(self):
+        from soma_skeleton import world_from_locals
+        from step_cycle import foot_points
+
+        pose, parents, names = standing_pose()
+        rng = np.random.default_rng(11)
+        q = pose[:, 3:] + rng.normal(scale=0.08, size=(len(parents), 4))
+        pose[:, 3:] = q / np.linalg.norm(q, axis=-1, keepdims=True)
+        pos, _ = world_from_locals(parents, pose[:, :3], pose[:, 3:])
+        pts = foot_points(pose, parents, names)
+        for side, ankle_name, toe_name in (
+            ("left", "LeftFoot", "LeftToeBase"),
+            ("right", "RightFoot", "RightToeBase"),
+        ):
+            np.testing.assert_allclose(pts[side]["ankle"], pos[names.index(ankle_name)], atol=1e-12)
+            np.testing.assert_allclose(pts[side]["toe"], pos[names.index(toe_name)], atol=1e-12)

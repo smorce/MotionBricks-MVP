@@ -139,12 +139,14 @@ def validate_stop_motion(frames, original, goal, parents, names, ground):
     result['rotation_peak'] = dict(frame=int(peak_frame), joint=names[peak_joint],
                                    angle_rad=float(angles[peak_frame, peak_joint]))
     calibration = ground
-    from step_cycle import fk
+    from soma_skeleton import world_from_locals_batch
     from stop_diagnostics import points_from_world
-    world=[fk(p,parents) for p in [original,*frames]]
-    raw_points = [points_from_world(positions,names) for positions,_ in world[1:]]
+    all_poses = np.asarray([original, *frames], dtype=np.float64)
+    pos_batch, rot_batch = world_from_locals_batch(parents, all_poses[:, :, :3], all_poses[:, :, 3:7])
+    world = list(zip(pos_batch, rot_batch))
+    raw_points = [points_from_world(positions, names) for positions in pos_batch[1:]]
     points = [contact_points(p, calibration) for p in raw_points]
-    start = contact_points(points_from_world(world[0][0],names), calibration)
+    start = contact_points(points_from_world(pos_batch[0], names), calibration)
     ground = calibration['floor_z']
     result['ground_world_z'] = ground
     penetration = next(((i, side, part) for i, p in enumerate(points)

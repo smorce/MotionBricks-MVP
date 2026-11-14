@@ -5,7 +5,7 @@ from threading import Condition
 TERMINAL = {'idle', 'settled', 'stop_failed', 'stop_relaxed', 'collect_preparing', 'pose_done'}
 
 class FramePipeline:
-    def __init__(self, capacity=120, prefill=90):
+    def __init__(self, capacity=240, prefill=6):
         self.capacity, self.prefill = capacity, prefill
         self.condition = Condition()
         self.frames = deque()
@@ -17,11 +17,13 @@ class FramePipeline:
 
     def begin(self, epoch):
         with self.condition:
+            cleared = len(self.frames)
             self.epoch = epoch
             self.frames.clear()
             self.events.clear()
             self.playing = False
             self.condition.notify_all()
+            return cleared
 
     def event(self, message, epoch):
         with self.condition:
@@ -63,8 +65,9 @@ class FramePipeline:
 
 class ProcessOutput:
     """単一推論プロセスから確定区間を渡す。要求更新後の結果は送らない。"""
-    def __init__(self, output, epoch, closed):
+    def __init__(self, output, epoch, closed, pacer=None):
         self.output, self.epoch, self.closed = output, epoch, closed
+        self.pacer = pacer
         self.events = []
 
     def is_current(self, epoch):
@@ -84,14 +87,45 @@ class ProcessOutput:
             from replay_writer import WRITER
             metrics = dict(stages=TIMINGS.summary(), replay_save_ms=WRITER.last_save_ms,
                            replay_dropped=WRITER.dropped, replay_failed=WRITER.failed)
-        packet = (epoch, message, checkpoint, events, metrics)
+        packet = (identity, message, checkpoint, events, metrics)
         while not self.closed.is_set() and identity == self.epoch.value:
             try:
                 self.output.put(packet, timeout=.05)
+                if self.pacer is not None:
+                    self.pacer.note_produced()
                 return True
             except Full:
                 pass
         return False
+
+
+class GenerationPacer:
+    """推論側の先行生成数を終端状態と移動中で制限し、旧フレーム滞留を防ぐ。"""
+    def __init__(self, consumed, wake, *, terminal_limit=2, active_limit=36):
+        self.consumed = consumed
+        self.wake = wake
+        self.terminal_limit = terminal_limit
+        self.active_limit = active_limit
+        self.produced = 0
+
+    def limit_for(self, phase):
+        return self.terminal_limit if phase in TERMINAL else self.active_limit
+
+    def in_flight(self):
+        return self.produced - self.consumed.value
+
+    def should_wait(self, phase):
+        return self.in_flight() >= self.limit_for(phase)
+
+    def wait_if_needed(self, phase, is_current, timeout=0.01):
+        while is_current() and self.should_wait(phase):
+            self.wake.clear()
+            if not is_current() or not self.should_wait(phase):
+                break
+            self.wake.wait(timeout)
+
+    def note_produced(self):
+        self.produced += 1
 
 
 class CheckpointHistory:
