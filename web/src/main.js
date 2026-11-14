@@ -9,6 +9,7 @@ import {VRMLoaderPlugin, VRMUtils} from '@pixiv/three-vrm';
 import {threePointToRuntime} from './coords.js';
 import {abductUpperArms, adductUpperLegs, pointFeetForward, stanceData} from './stance.js';
 import {IdleHandoff} from './idleHandoff.js';
+import {PoseDetailAdjuster, detailData} from './poseDetails.js';
 import {GroundedIdle} from './groundedIdle.js';
 import {emptyOwner, reduceOwner, shouldApplyStance} from './poseOwner.js';
 import {isSceneBootReady, spawnOffset} from './bootGate.js';
@@ -39,11 +40,15 @@ const stanceInputs={
   leg:document.querySelector('#legAdduct'),
   arm:document.querySelector('#armAbduct'),
   toe:document.querySelector('#toeForward'),
+  finger:document.querySelector('#fingerCurl'),
+  ankle:document.querySelector('#ankleRoll'),
 }
 const stanceOut={
   leg:document.querySelector('#legAdductOut'),
   arm:document.querySelector('#armAbductOut'),
   toe:document.querySelector('#toeForwardOut'),
+  finger:document.querySelector('#fingerCurlOut'),
+  ankle:document.querySelector('#ankleRollOut'),
 }
 const stanceDataEl=document.querySelector('#stanceData')
 const STANCE_KEY='roze.stanceAdjust'
@@ -55,18 +60,25 @@ function currentStance(){
     toeDeg:stanceInputs.toe?.value,
   })
 }
+function currentDetails(){
+  return detailData({fingerDeg:stanceInputs.finger?.value, ankleDeg:stanceInputs.ankle?.value});
+}
 function formatStance(data){
-  return `{"leg_adduct_deg":${data.leg_adduct_deg.toFixed(1)},"arm_abduct_deg":${data.arm_abduct_deg.toFixed(1)},"toe_forward_deg":${data.toe_forward_deg.toFixed(1)}}`
+  const detail=currentDetails();
+  return JSON.stringify({...data, ...detail});
 }
 function renderStanceReadout(){
   const data=currentStance()
   if(stanceOut.leg) stanceOut.leg.textContent=`${data.leg_adduct_deg.toFixed(1)}°`
   if(stanceOut.arm) stanceOut.arm.textContent=`${data.arm_abduct_deg.toFixed(1)}°`
   if(stanceOut.toe) stanceOut.toe.textContent=`${data.toe_forward_deg.toFixed(1)}°`
+  const detail=currentDetails()
+  if(stanceOut.finger) stanceOut.finger.textContent=`${detail.finger_curl_deg.toFixed(1)}°`
+  if(stanceOut.ankle) stanceOut.ankle.textContent=`${detail.ankle_roll_deg.toFixed(1)}°`
   if(stanceDataEl) stanceDataEl.textContent=formatStance(data)
 }
 function rememberStance(){
-  try{ localStorage.setItem(STANCE_KEY, JSON.stringify(currentStance())) }catch{ /* private mode */ }
+  try{ localStorage.setItem(STANCE_KEY, JSON.stringify({...currentStance(), ...currentDetails()})) }catch{ /* private mode */ }
 }
 function restoreStance(){
   let saved={}
@@ -86,6 +98,9 @@ function restoreStance(){
   if(stanceInputs.leg) stanceInputs.leg.value=String(data.leg_adduct_deg)
   if(stanceInputs.arm) stanceInputs.arm.value=String(data.arm_abduct_deg)
   if(stanceInputs.toe) stanceInputs.toe.value=String(data.toe_forward_deg)
+  const detail=detailData({fingerDeg:saved.finger_curl_deg, ankleDeg:saved.ankle_roll_deg})
+  if(stanceInputs.finger) stanceInputs.finger.value=String(detail.finger_curl_deg)
+  if(stanceInputs.ankle) stanceInputs.ankle.value=String(detail.ankle_roll_deg)
 }
 restoreStance()
 renderStanceReadout()
@@ -108,6 +123,7 @@ document.querySelector('#stanceCopy')?.addEventListener('click', async ()=>{
     if(button) button.textContent='Copy failed'
   }
 })
+const poseDetails=new PoseDetailAdjuster();
 let stanceApplied=false
 function adjustStance(){
   if(!vrm) return
@@ -891,6 +907,8 @@ window.motionBricksPerformance=()=>{
 };
 function animate(){
   requestAnimationFrame(animate);
+  // Undo last frame's visual-only finger/ankle offsets before any animation owner writes.
+  poseDetails.restore();
   const renderStarted=performance.now();
   if(lastRenderAt!==null){renderIntervals.push(renderStarted-lastRenderAt);if(renderIntervals.length>4096)renderIntervals.shift();}
   lastRenderAt=renderStarted;
@@ -954,6 +972,8 @@ function animate(){
       }
     }
     if(sceneReady) gaitDebug.update(gait, rig, spawn, FLOOR_TOP);
+    // Apply after the active MotionBricks/settled/VRMA owner has finished writing.
+    if(sceneReady) poseDetails.apply(vrm, currentDetails());
     vrm.update(delta);
     if(sceneReady && gait?.feet && rig?.rest?.[0]){
       vrm.scene.updateMatrixWorld(true);
