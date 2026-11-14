@@ -34,7 +34,21 @@ export const FINGER_JOINTS = [
 
 const _forward = new THREE.Vector3(0, 0, 1);
 const _up = new THREE.Vector3(0, 1, 0);
+const _right = new THREE.Vector3(1, 0, 0);
 const _turn = new THREE.Quaternion();
+
+/**
+ * 足から頭までの体軸は、垂直より約6度前へ倒れている。
+ * 腰は足に関わるので動かさず、その6度を背骨と胸で戻す。首は同じ量を戻して顔の向きを保つ。
+ */
+const UPRIGHT_PITCH_DEG = [
+  ['spine', -6.2],
+  ['chest', -6.6],
+  ['neck', 12.8],
+];
+
+/** 足のローカルXを正方向へ回すと、つま先が下がる。かかとを大きく浮かせない量。 */
+const TOE_DROP_DEG = 4;
 
 /** スライダーの入力を、指定した範囲の角度（度）へ揃える。 */
 export function clampDegrees(value, min, max) {
@@ -128,6 +142,30 @@ function rad(deg) {
   return deg * Math.PI / 180;
 }
 
+/** 正の角度で、骨の上方向（+Y）を前方（+Z）へ倒す。 */
+export function pitchForward(quaternion, radians) {
+  _turn.setFromAxisAngle(_right, radians);
+  quaternion.multiply(_turn);
+}
+
+/** 背骨と胸を起こす。首は逆に回し、頭の世界の向きを変えない。 */
+export function straightenUpperBody(getNode, sign = 1) {
+  for (const [name, deg] of UPRIGHT_PITCH_DEG) {
+    const node = getNode(name);
+    if (!node?.quaternion) continue;
+    pitchForward(node.quaternion, rad(sign * deg));
+  }
+}
+
+/** 両足を前へ倒し、浮いたつま先を床へ近づける。 */
+export function lowerToes(getNode, sign = 1) {
+  for (const name of ['leftFoot', 'rightFoot']) {
+    const node = getNode(name);
+    if (!node?.quaternion) continue;
+    pitchForward(node.quaternion, rad(sign * TOE_DROP_DEG));
+  }
+}
+
 /** 足のボーンへ、足裏の傾き（度）だけを足す。停止中は保存姿勢へ毎フレーム重ねる。 */
 export function poseAnkles(getNode, deg) {
   const left = getNode('leftFoot');
@@ -135,14 +173,10 @@ export function poseAnkles(getNode, deg) {
   if (left && right) rollAnkles(left.quaternion, right.quaternion, rad(deg));
 }
 
-const RETARGETED_FINGERS = new Set([
-  'leftThumbDistal', 'rightThumbDistal',
-  'leftMiddleDistal', 'rightMiddleDistal',
-]);
-
 /**
  * 指の各関節へ、握り角（度）を配分して足す。
- * replaceUnmapped のとき、配信で上書きされない関節は安静角から置き直す。毎フレーム掛けると重ならない。
+ * replaceUnmapped のとき、配信姿勢の親指先と中指先も含めて安静角から置き直す。
+ * その2本だけ先端が深く曲がったまま残るため、他の指と同じ軽い握りに揃える。
  */
 export function poseFingers(getNode, deg, {replaceUnmapped = false} = {}) {
   for (const [leftName, rightName, weight] of FINGER_JOINTS) {
@@ -150,7 +184,7 @@ export function poseFingers(getNode, deg, {replaceUnmapped = false} = {}) {
     for (const [name, side] of [[leftName, 'left'], [rightName, 'right']]) {
       const node = getNode(name);
       if (!node) continue;
-      if (replaceUnmapped && !RETARGETED_FINGERS.has(name)) node.quaternion.identity();
+      if (replaceUnmapped) node.quaternion.identity();
       curlFinger(node.quaternion, side, angle);
     }
   }

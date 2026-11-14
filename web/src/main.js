@@ -7,7 +7,7 @@ import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {VRMLoaderPlugin, VRMUtils} from '@pixiv/three-vrm';
 import {threePointToRuntime} from './coords.js';
-import {poseAnkles, poseFingers, poseStance, stanceData, stanceFromSaved} from './stance.js';
+import {lowerToes, poseAnkles, poseFingers, poseStance, stanceData, stanceFromSaved, straightenUpperBody} from './stance.js';
 import {IdleHandoff} from './idleHandoff.js';
 import {GroundedIdle} from './groundedIdle.js';
 import {emptyOwner, reduceOwner, shouldApplyStance} from './poseOwner.js';
@@ -953,6 +953,8 @@ function animate(){
       }
     }
     if(sceneReady) gaitDebug.update(gait, rig, spawn, FLOOR_TOP);
+    straightenUpperBody(stanceNode, 1);
+    lowerToes(stanceNode, 1);
     vrm.update(delta);
     if(sceneReady && gait?.feet && rig?.rest?.[0]){
       vrm.scene.updateMatrixWorld(true);

@@ -6,11 +6,14 @@ import {
   clampLegAdductDeg,
   curlFinger,
   FINGER_JOINTS,
+  pitchForward,
   pointFeetForward,
   poseFingers,
   poseStance,
   stanceData,
   stanceFromSaved,
+  lowerToes,
+  straightenUpperBody,
   rollAnkles,
 } from './stance.js';
 
@@ -126,3 +129,59 @@ for (const name of limbNames) {
   assert.ok(nodes[name].quaternion.angleTo(originals[name]) < 1e-5, `${name} returns after undo`);
 }
 assert.ok(nodes.leftIndexProximal.quaternion.angleTo(new THREE.Quaternion()) < 1e-5, 'finger curl undo returns to rest');
+
+const bentMiddle = new THREE.Quaternion().setFromEuler(new THREE.Euler(0.4, 0.2, -1.1));
+const bentThumb = new THREE.Quaternion().setFromEuler(new THREE.Euler(0.5, -0.3, 0.8));
+nodes.leftMiddleDistal.quaternion.copy(bentMiddle);
+nodes.leftThumbDistal.quaternion.copy(bentThumb);
+poseFingers(getNode, 9.5, {replaceUnmapped: true});
+const middleTip = new THREE.Vector3(1, 0, 0).applyQuaternion(nodes.leftMiddleDistal.quaternion);
+const thumbTip = new THREE.Vector3(1, 0, 0).applyQuaternion(nodes.leftThumbDistal.quaternion);
+assert.ok(nodes.leftMiddleDistal.quaternion.angleTo(bentMiddle) > 0.4, 'middle fingertip drops the streamed bend');
+assert.ok(nodes.leftThumbDistal.quaternion.angleTo(bentThumb) > 0.4, 'thumb tip drops the streamed bend');
+assert.ok(middleTip.y < 0 && middleTip.y > -0.2, 'middle fingertip uses the same light curl');
+assert.ok(thumbTip.y < 0 && thumbTip.y > -0.15, 'thumb tip uses the same light curl');
+assert.ok(Math.abs(middleTip.z) < 0.02 && Math.abs(thumbTip.z) < 0.02, 'replaced fingers stay in the palm plane');
+
+const chain = {};
+let parent = new THREE.Object3D();
+parent.name = 'hips';
+chain.hips = parent;
+for (const [name, deg] of [['spine', 1.05], ['chest', 2.4], ['neck', -5.22], ['head', 0.33]]) {
+  const node = new THREE.Object3D();
+  node.name = name;
+  node.rotation.x = THREE.MathUtils.degToRad(deg);
+  parent.add(node);
+  chain[name] = node;
+  parent = node;
+}
+chain.hips.rotation.x = THREE.MathUtils.degToRad(1.55);
+chain.hips.updateMatrixWorld(true);
+const headBefore = chain.head.getWorldQuaternion(new THREE.Quaternion());
+const chestForwardBefore = new THREE.Vector3(0, 1, 0).applyQuaternion(chain.chest.getWorldQuaternion(new THREE.Quaternion())).z;
+const upright = (name) => chain[name];
+straightenUpperBody(upright, 1);
+const chestForward = new THREE.Vector3(0, 1, 0).applyQuaternion(chain.chest.getWorldQuaternion(new THREE.Quaternion())).z;
+assert.ok(chestForward < chestForwardBefore - 0.15, 'chest stands closer to vertical');
+assert.ok(chestForward < -0.12 && chestForward > -0.16, 'chest removes the marked six degree lean');
+assert.ok(chain.head.getWorldQuaternion(new THREE.Quaternion()).angleTo(headBefore) < 1e-4, 'head keeps its facing');
+const pitched = new THREE.Quaternion();
+pitchForward(pitched, THREE.MathUtils.degToRad(8));
+assert.ok(new THREE.Vector3(0, 1, 0).applyQuaternion(pitched).z > 0.1, 'positive pitch leans forward');
+straightenUpperBody(upright, -1);
+const chestRestored = new THREE.Vector3(0, 1, 0).applyQuaternion(chain.chest.getWorldQuaternion(new THREE.Quaternion())).z;
+assert.ok(Math.abs(chestRestored - chestForwardBefore) < 1e-4, 'undo restores the chest lean');
+assert.ok(chain.head.getWorldQuaternion(new THREE.Quaternion()).angleTo(headBefore) < 1e-4, 'undo keeps the head facing');
+
+const ankle = new THREE.Object3D();
+const toeBone = new THREE.Object3D();
+toeBone.position.set(0.03, -0.07, 0.11);
+ankle.add(toeBone);
+const toeBefore = toeBone.getWorldPosition(new THREE.Vector3()).y;
+lowerToes((name) => name === 'leftFoot' ? ankle : null, 1);
+ankle.updateMatrixWorld(true);
+const toeAfter = toeBone.getWorldPosition(new THREE.Vector3()).y;
+assert.ok(toeAfter < toeBefore - 0.005, 'toes drop toward the ground');
+lowerToes((name) => name === 'leftFoot' ? ankle : null, -1);
+ankle.updateMatrixWorld(true);
+assert.ok(Math.abs(toeBone.getWorldPosition(new THREE.Vector3()).y - toeBefore) < 1e-4, 'undo restores the toe height');
