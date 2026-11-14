@@ -5,7 +5,7 @@ from pathlib import Path
 from zipfile import ZipFile
 import numpy as np
 from engine import _load_runtime
-from final_stop import facing_of
+from step_cycle import pose_facing
 from quats import RX90, quat_mul, quat_to_mat
 from stop_distance_probe import pure_generate
 from stop_runtime import new_character
@@ -36,7 +36,7 @@ def main():
                 replay['history'] = np.repeat(final[None], len(source['history']), axis=0).tolist()
                 replay['metadata']['contacts'] = [1., 1., 1., 1.]
                 # 停止1秒後の姿勢履歴は静止した実姿勢で満たす。
-                replay['metadata']['goal'] = (final[0, :2] + np.asarray(facing_of(final[0, 3:]))[:2] * .001).tolist()
+                replay['metadata']['goal'] = (final[0, :2] + np.asarray(pose_facing(final, source['metadata']['names']))[:2] * .001).tolist()
                 scratch = new_character(rt, engine, pool, replay)
                 frames = pure_generate(scratch, replay, dict(mode='C', pinned=False), rt, idle)
                 row['stop_end_seconds'] = (len(row['frames'])-1)/60

@@ -37,9 +37,9 @@ from step_cycle import (
     choose_swing,
     default_names,
     default_parents,
-    facing_of,
     foot_points,
     leg_metrics,
+    pose_facing,
 )
 
 IDLE = "idle"
@@ -658,13 +658,13 @@ class LocomotionCycle:
     def _swing_choice(self, pose, parents, names) -> str:
         feet, _hips = _feet(pose, parents, names)
         return choose_swing(
-            feet["left"], feet["right"], facing_of(pose[0, 3:7]),
+            feet["left"], feet["right"], pose_facing(pose, names),
             float(feet["left"][2]), float(feet["right"][2]),
         )
 
     def _sagittal(self, pose, parents, names) -> float:
         feet, _hips = _feet(pose, parents, names)
-        facing = facing_of(pose[0, 3:7])
+        facing = pose_facing(pose, names)
         return abs(float(np.dot(feet["left"] - feet["right"], facing)))
 
     def _lock_stop_course(self, pose):
@@ -711,7 +711,7 @@ class LocomotionCycle:
             return self.stop_facing.copy()
         if self.command_direction is not None:
             return self.command_direction.copy()
-        return facing_of(pose[0, 3:7]) if given is None else np.asarray(given, dtype=float).copy()
+        return pose_facing(pose, self.names) if given is None else np.asarray(given, dtype=float).copy()
 
     def _capture_ground(self, pose, parents, names) -> None:
         if self.ground_calibration is None:

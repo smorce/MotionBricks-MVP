@@ -1,8 +1,7 @@
 """公式生成用の停止目標と、吸着させない着地検証。"""
 import numpy as np
 from soma_pose import overlay_pose
-from step_cycle import foot_points, facing_of
-from quats import quat_mul
+from step_cycle import foot_points, pose_facing, align_pose_facing
 from collect_stance import valid_pose, knees_valid, knees_continuous
 
 
@@ -88,10 +87,8 @@ def build_stop_target(original, goal, parents, names, ground):
     if raw is None:
         return None
     target = np.asarray(raw, dtype=float)
-    source_facing = facing_of(target[0, 3:])
-    facing = facing_of(original[0, 3:])
-    angle = np.arctan2(facing[1], facing[0]) - np.arctan2(source_facing[1], source_facing[0])
-    target[0, 3:] = quat_mul(np.array([0, 0, np.sin(angle/2), np.cos(angle/2)]), target[0, 3:])
+    facing = pose_facing(original, names)
+    target[0, 3:] = align_pose_facing(target, facing[:2], names)
     target[0, :2] = goal[:2]
     end = contact_points(foot_points(target, parents, names), ground)
     target[0, 2] += ground['floor_z'] - min(end[s][p][2] for s in ('left', 'right') for p in ('ankle', 'toe'))

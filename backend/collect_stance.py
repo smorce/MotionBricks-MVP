@@ -2,7 +2,7 @@
 import numpy as np
 from soma_pose import overlay_pose
 from quats import quat_mul, quat_to_mat
-from step_cycle import foot_points, facing_of, fk
+from step_cycle import foot_points, pose_facing, fk
 from soma_skeleton import SOMA_JOINT_NAMES, soma_parents
 
 COLLECT_SAGITTAL_M = 0.26
@@ -19,7 +19,7 @@ def needs_collect(sagittal_m, width_m):
 def stance(pose, parents, names):
     points = foot_points(pose, parents, names)
     delta = points['left']['ankle'] - points['right']['ankle']
-    facing = facing_of(pose[0, 3:])
+    facing = pose_facing(pose, names)
     return abs(float(delta @ facing)), abs(float(delta @ np.cross([0, 0, 1], facing)))
 
 
@@ -100,7 +100,7 @@ def build_collect_lift(settled, parents, names, swing, distance_m=.2):
     points = foot_points(settled, parents, names)
     joint = names.index(swing.title() + "Leg")
     _, world_rot = fk(settled, parents)
-    axis_world = np.cross([0, 0, 1], facing_of(settled[0, 3:]))
+    axis_world = np.cross([0, 0, 1], pose_facing(settled, names))
     parent = parents[joint]
     axis = world_rot[parent].T @ axis_world if parent >= 0 else axis_world
     height = float(np.clip(distance_m * .25, .05, .08))

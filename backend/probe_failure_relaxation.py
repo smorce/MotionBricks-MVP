@@ -6,7 +6,7 @@ import numpy as np
 from engine import _load_runtime, DT
 from stop_runtime import new_character
 from failure_relaxation import generate_failure_relaxation
-from step_cycle import facing_of
+from step_cycle import pose_facing
 from quats import RX90, quat_mul, quat_to_mat
 
 
@@ -23,7 +23,7 @@ def main():
     engine = rt['MotionBricksSOMAEngine'](rt['SOMA_N1_FP32_ONNX_PATH'], model_to_runtime=assets.model_to_runtime)
     with engine, wp.ScopedStream(engine.stream):
         character = new_character(rt, engine, pool, replay)
-        frames, metrics = generate_failure_relaxation(character, replay['metadata']['ground'], rt, facing_of(np.asarray(replay['pose'])[0, 3:]))
+        frames, metrics = generate_failure_relaxation(character, replay['metadata']['ground'], rt, pose_facing(np.asarray(replay['pose']), replay['metadata']['names']))
         if frames is None:
             raise RuntimeError(json.dumps(metrics))
         skeleton = character.skeleton

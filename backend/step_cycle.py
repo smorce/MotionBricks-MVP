@@ -85,6 +85,32 @@ def facing_of(root_quat: np.ndarray) -> np.ndarray:
     return flat
 
 
+def pose_facing(pose: np.ndarray, names: list[str] | None = None) -> np.ndarray:
+    """左右の股関節オフセットから骨盤の実際の正面方向（水平単位ベクトル）を求める。"""
+    pose = np.asarray(pose, dtype=np.float64)
+    if names is not None and "LeftLeg" in names and "RightLeg" in names:
+        left_local = pose[names.index("LeftLeg"), :3] - pose[names.index("RightLeg"), :3]
+        if float(np.linalg.norm(left_local)) > 1e-6:
+            left_world = quat_to_mat(pose[0, 3:7]) @ left_local
+            forward = np.array([left_world[1], -left_world[0], 0.0], dtype=np.float64)
+            flat = _normalize(forward)
+            if float(np.linalg.norm(flat)) >= 1e-8:
+                return flat
+    return facing_of(pose[0, 3:7])
+
+
+def align_pose_facing(pose: np.ndarray, direction_xy: np.ndarray, names: list[str] | None = None) -> np.ndarray:
+    """ルートの水平向きを骨盤の正面基準で direction_xy へ回転させたクォータニオンを返す。"""
+    current = pose_facing(pose, names)
+    target = _normalize(np.array([direction_xy[0], direction_xy[1], 0.0], dtype=np.float64))
+    if float(np.linalg.norm(target)) < 1e-8:
+        return quat_normalize(pose[0, 3:7])
+    cross = current[0] * target[1] - current[1] * target[0]
+    dot = float(np.clip(current[0] * target[0] + current[1] * target[1], -1.0, 1.0))
+    spin = _axis_angle(np.array([0.0, 0.0, 1.0]), math.atan2(cross, dot))
+    return quat_normalize(quat_mul(spin, pose[0, 3:7]))
+
+
 def yaw_toward(root_quat: np.ndarray, direction_xy: np.ndarray) -> np.ndarray:
     current = facing_of(root_quat)
     target = _normalize(np.array([direction_xy[0], direction_xy[1], 0.0]))
@@ -230,7 +256,7 @@ def begin_step(pose, parents, names, *, kind: str, direction_xy, distance_m: flo
     base = np.array(pose, dtype=np.float64, copy=True)
     direction = _normalize(np.array([direction_xy[0], direction_xy[1], 0.0], dtype=np.float64))
     if float(np.linalg.norm(direction)) < 1e-8:
-        direction = facing_of(base[0, 3:7])
+        direction = pose_facing(base, names)
     lateral = _normalize(np.cross(np.array([0.0, 0.0, 1.0]), direction))
     feet, _hips = _chain_positions(base, parents, names)
     support = "right" if swing == "left" else "left"
@@ -266,7 +292,7 @@ def begin_step(pose, parents, names, *, kind: str, direction_xy, distance_m: flo
         swing_start=swing_start,
         swing_land=land,
         lift=lift,
-        target_quat=yaw_toward(base[0, 3:7], direction[:2]),
+        target_quat=align_pose_facing(base, direction[:2], names),
         facing=direction,
         lateral=lateral,
         match_speed=match_speed,

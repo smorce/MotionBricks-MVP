@@ -28,12 +28,13 @@ def recommendations(candidates, reviews):
 
 
 def state_features(replay):
-    from final_stop import facing_of
+    from step_cycle import pose_facing
     history = np.asarray(replay['history'])
     dt = float(replay['delta_times'][-2])
     velocity = (history[-1, 0, :2] - history[-2, 0, :2]) / max(dt, 1e-8)
     speed = float(np.linalg.norm(velocity))
-    direction = velocity / speed if speed > .01 else np.asarray(facing_of(np.asarray(replay['pose'])[0, 3:]))[:2]
+    names = replay.get('metadata', {}).get('names')
+    direction = velocity / speed if speed > .01 else np.asarray(pose_facing(np.asarray(replay['pose']), names))[:2]
     return dict(root=replay['pose'][0][:3], speed_mps=speed, direction=direction.tolist(),
                 support=replay['metadata']['support'], contacts=replay['metadata'].get('contacts'),
                 phase=replay['metadata'].get('control', {}).get('phase', 'contact-derived'),
@@ -43,34 +44,38 @@ def state_features(replay):
 
 def pure_generate(character, replay, spec, rt, idle, *, contact_lock=False):
     from engine import DT
-    from final_stop import build_stop_target, contact_points, foot_points, facing_of
+    from final_stop import build_stop_target, contact_points, foot_points
+    from step_cycle import align_pose_facing, pose_facing
     from quats import quat_mul
     from stop_runtime import GeneratedStop
     wp = rt['wp']
     data = replay['metadata']
     original = np.asarray(replay['pose'])
     goal = data['goal']
+    direction = np.asarray(goal)[:2] - original[0, :2]
+    has_direction = float(np.linalg.norm(direction)) > 1e-4
     if spec['mode'] in ('A', 'B'):
         target = build_stop_target(original, goal, data['parents'], data['names'], data['ground'])
         if target is None:
             raise ValueError('Invalid F001 target')
-        source = facing_of(target[0, 3:])
-        direction = np.asarray(goal)[:2] - original[0, :2]
-        angle = np.arctan2(direction[1], direction[0]) - np.arctan2(source[1], source[0])
-        target[0, 3:] = quat_mul(np.array([0, 0, np.sin(angle/2), np.cos(angle/2)]), target[0, 3:])
+        if has_direction:
+            target[0, 3:] = align_pose_facing(target, direction, data['names'])
         targets = np.repeat(target[None], 4, axis=0)
         count = 1
     else:
         targets = idle.copy()
         # クリップの骨格寸法を保存状態へ合わせ、連続４フレームの回転を維持する。
         targets[:, 1:, :3] = original[None, 1:, :3]
-        source = facing_of(targets[0, 0, 3:])
-        direction = np.asarray(goal)[:2] - original[0, :2]
-        angle = np.arctan2(direction[1], direction[0]) - np.arctan2(source[1], source[0])
-        rotation = np.array([0, 0, np.sin(angle/2), np.cos(angle/2)])
-        for target in targets:
-            target[0, 3:] = quat_mul(rotation, target[0, 3:])
-            target[0, :2] = goal[:2]
+        if has_direction:
+            source = pose_facing(targets[0], data['names'])
+            angle = np.arctan2(direction[1], direction[0]) - np.arctan2(source[1], source[0])
+            rotation = np.array([0, 0, np.sin(angle/2), np.cos(angle/2)])
+            for target in targets:
+                target[0, 3:] = quat_mul(rotation, target[0, 3:])
+                target[0, :2] = goal[:2]
+        else:
+            for target in targets:
+                target[0, :2] = goal[:2]
         feet = contact_points(foot_points(targets[0], data['parents'], data['names']), data['ground'])
         targets[:, 0, 2] += data['ground']['floor_z'] - min(p[2] for side in feet.values() for p in side.values())
         count = 4

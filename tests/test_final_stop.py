@@ -320,3 +320,41 @@ class RotationDiagnosticsTests(unittest.TestCase):
         self.assertEqual(metrics['rotation_peak']['joint'], 'LeftFoot')
         self.assertEqual(metrics['rotation_peak']['frame'], 1)
         self.assertAlmostEqual(metrics['rotation_peak']['angle_rad'], 1.)
+
+
+def _soma_zup_pose():
+    import json
+    from pathlib import Path
+    from quats import RX90, quat_mul, quat_to_mat
+    ref = json.loads((Path(__file__).resolve().parents[1] / 'backend' / 'soma_reference.json').read_text(encoding='utf-8'))
+    pose = np.asarray(ref['local_transforms'], dtype=np.float64)
+    pose[0, :3] = quat_to_mat(RX90) @ pose[0, :3]
+    pose[0, 3:] = quat_mul(RX90, pose[0, 3:])
+    return pose, list(ref['parents']), list(ref['joint_names'])
+
+
+def _pelvis_forward_xy(pose, parents, names):
+    from step_cycle import fk
+    pos, _ = fk(pose, parents)
+    left = pos[names.index('LeftLeg')][:2] - pos[names.index('RightLeg')][:2]
+    fwd = np.array([left[1], -left[0]], dtype=np.float64)
+    return fwd / np.linalg.norm(fwd)
+
+
+class RealSomaFacingTests(unittest.TestCase):
+    def test_build_stop_target_keeps_soma_pelvis_facing_without_44deg_right_bias(self):
+        from quats import quat_from_axis_angle, quat_mul
+        pose, parents, names = _soma_zup_pose()
+        # 実SOMA歩行中の前傾を含む姿勢を +Y (+90度) へ向けた状態を元姿勢にする
+        pitch = quat_from_axis_angle(np.array([0.0, 0.0, 1.0]), np.deg2rad(5.0))
+        yaw = quat_from_axis_angle(np.array([0.0, 0.0, 1.0]), np.pi)
+        pose[0, 3:] = quat_mul(yaw, quat_mul(pose[0, 3:], pitch))
+        expected_fwd = _pelvis_forward_xy(pose, parents, names)
+        self.assertGreater(expected_fwd[1], 0.99)
+        ground = calibrate_stop_ground(pose, parents, names)
+        target = build_stop_target(pose, [0.0, 0.5], parents, names, ground)
+        self.assertIsNotNone(target)
+        actual_fwd = _pelvis_forward_xy(target, parents, names)
+        dot = float(np.dot(actual_fwd, expected_fwd))
+        self.assertGreater(dot, 0.995, f'Expected target pelvis to match travel facing, got {actual_fwd} vs {expected_fwd}')
+
