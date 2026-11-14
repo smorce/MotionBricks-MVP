@@ -1,5 +1,8 @@
 # ロゼ × MotionBricks × d3-mini × PoseLoom — 検証用プロトタイプ v0.1
 
+https://github.com/smorce/MotionBricks-MVP/tree/checkpoint-02
+最新のブランチ: checkpoint-02
+
 確認日: 2026-10-31 JST
 
 このZIPには、**RTX 4090上のNVIDIA MotionBricks SOMAモデルで実際に歩行を生成し、WebSocketで送ってブラウザ上のVRMへ反映するための試作コード**を入れています。**RTX 4090環境では未実行**です。Pythonの構文チェック、JavaScriptの構文チェック、カタログ選択の単体テストのみ実施済みです。確実な動作を保証するものではありません。
