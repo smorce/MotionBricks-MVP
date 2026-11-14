@@ -7,7 +7,7 @@ import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {VRMLoaderPlugin, VRMUtils} from '@pixiv/three-vrm';
 import {threePointToRuntime} from './coords.js';
-import {abductUpperArms, adductUpperLegs, pointFeetForward, stanceData} from './stance.js';
+import {FINGER_CURL_DEFAULT_DEG, poseAnkles, poseFingers, poseStance, stanceData} from './stance.js';
 import {IdleHandoff} from './idleHandoff.js';
 import {GroundedIdle} from './groundedIdle.js';
 import {emptyOwner, reduceOwner, shouldApplyStance} from './poseOwner.js';
@@ -39,11 +39,15 @@ const stanceInputs={
   leg:document.querySelector('#legAdduct'),
   arm:document.querySelector('#armAbduct'),
   toe:document.querySelector('#toeForward'),
+  finger:document.querySelector('#fingerCurl'),
+  ankle:document.querySelector('#ankleRoll'),
 }
 const stanceOut={
   leg:document.querySelector('#legAdductOut'),
   arm:document.querySelector('#armAbductOut'),
   toe:document.querySelector('#toeForwardOut'),
+  finger:document.querySelector('#fingerCurlOut'),
+  ankle:document.querySelector('#ankleRollOut'),
 }
 const stanceDataEl=document.querySelector('#stanceData')
 const STANCE_KEY='roze.stanceAdjust'
@@ -53,16 +57,26 @@ function currentStance(){
     legDeg:stanceInputs.leg?.value,
     armDeg:stanceInputs.arm?.value,
     toeDeg:stanceInputs.toe?.value,
+    fingerDeg:stanceInputs.finger?.value,
+    ankleDeg:stanceInputs.ankle?.value,
   })
 }
+function formatAnkle(deg){
+  const amount=Math.abs(deg).toFixed(1)
+  if(deg>0) return `外 ${amount}°`
+  if(deg<0) return `内 ${amount}°`
+  return '0.0°'
+}
 function formatStance(data){
-  return `{"leg_adduct_deg":${data.leg_adduct_deg.toFixed(1)},"arm_abduct_deg":${data.arm_abduct_deg.toFixed(1)},"toe_forward_deg":${data.toe_forward_deg.toFixed(1)}}`
+  return `{"leg_adduct_deg":${data.leg_adduct_deg.toFixed(1)},"arm_abduct_deg":${data.arm_abduct_deg.toFixed(1)},"toe_forward_deg":${data.toe_forward_deg.toFixed(1)},"finger_curl_deg":${data.finger_curl_deg.toFixed(1)},"ankle_roll_deg":${data.ankle_roll_deg.toFixed(1)}}`
 }
 function renderStanceReadout(){
   const data=currentStance()
   if(stanceOut.leg) stanceOut.leg.textContent=`${data.leg_adduct_deg.toFixed(1)}°`
   if(stanceOut.arm) stanceOut.arm.textContent=`${data.arm_abduct_deg.toFixed(1)}°`
   if(stanceOut.toe) stanceOut.toe.textContent=`${data.toe_forward_deg.toFixed(1)}°`
+  if(stanceOut.finger) stanceOut.finger.textContent=`${data.finger_curl_deg.toFixed(1)}°`
+  if(stanceOut.ankle) stanceOut.ankle.textContent=formatAnkle(data.ankle_roll_deg)
   if(stanceDataEl) stanceDataEl.textContent=formatStance(data)
 }
 function rememberStance(){
@@ -82,10 +96,14 @@ function restoreStance(){
     legDeg:saved.leg_adduct_deg,
     armDeg:saved.arm_abduct_deg,
     toeDeg:saved.toe_forward_deg,
+    fingerDeg:Object.hasOwn(saved, 'finger_curl_deg') ? saved.finger_curl_deg : FINGER_CURL_DEFAULT_DEG,
+    ankleDeg:saved.ankle_roll_deg,
   })
   if(stanceInputs.leg) stanceInputs.leg.value=String(data.leg_adduct_deg)
   if(stanceInputs.arm) stanceInputs.arm.value=String(data.arm_abduct_deg)
   if(stanceInputs.toe) stanceInputs.toe.value=String(data.toe_forward_deg)
+  if(stanceInputs.finger) stanceInputs.finger.value=String(data.finger_curl_deg)
+  if(stanceInputs.ankle) stanceInputs.ankle.value=String(data.ankle_roll_deg)
 }
 restoreStance()
 renderStanceReadout()
@@ -109,26 +127,25 @@ document.querySelector('#stanceCopy')?.addEventListener('click', async ()=>{
   }
 })
 let stanceApplied=false
+let heldStance=null
+let fingerBaked=0
+function stanceNode(name){
+  return vrm?.humanoid.getNormalizedBoneNode(name)??null
+}
 function adjustStance(){
   if(!vrm) return
-  const data=currentStance()
-  const human=vrm.humanoid
-  const leftLeg=human.getNormalizedBoneNode('leftUpperLeg')
-  const rightLeg=human.getNormalizedBoneNode('rightUpperLeg')
-  if(leftLeg&&rightLeg){
-    adductUpperLegs(leftLeg.quaternion, rightLeg.quaternion, THREE.MathUtils.degToRad(data.leg_adduct_deg))
-  }
-  const leftArm=human.getNormalizedBoneNode('leftUpperArm')
-  const rightArm=human.getNormalizedBoneNode('rightUpperArm')
-  if(leftArm&&rightArm){
-    abductUpperArms(leftArm.quaternion, rightArm.quaternion, THREE.MathUtils.degToRad(data.arm_abduct_deg))
-  }
-  const leftFoot=human.getNormalizedBoneNode('leftFoot')
-  const rightFoot=human.getNormalizedBoneNode('rightFoot')
-  if(leftFoot&&rightFoot){
-    pointFeetForward(leftFoot.quaternion, rightFoot.quaternion, THREE.MathUtils.degToRad(data.toe_forward_deg))
-  }
+  poseStance(stanceNode, currentStance(), 1)
+  fingerBaked=currentStance().finger_curl_deg
   stanceApplied=true
+}
+// 停止中は足が保存姿勢へ戻る。足首は毎フレーム差分を重ね、指は変化した分だけ足す。
+function nudgeHeldHandsAndAnkles(){
+  if(!vrm||!heldStance) return
+  const next=currentStance()
+  poseAnkles(stanceNode, next.ankle_roll_deg-heldStance.ankle_roll_deg)
+  const fingerDelta=next.finger_curl_deg-fingerBaked
+  if(fingerDelta) poseFingers(stanceNode, fingerDelta)
+  fingerBaked=next.finger_curl_deg
 }
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(42, window.innerWidth/window.innerHeight, .1, 150);
@@ -347,6 +364,7 @@ const lastFollow=new THREE.Vector3();
 let followReady=false;
 function clearHeldStop(){
   groundedIdle=null;
+  heldStance=null;
 }
 function bootReady(){
   return isSceneBootReady({
@@ -371,6 +389,7 @@ function captureSettledIdle(){
   if(!vrm||!currentPose) return;
   applyPose(currentPose);
   adjustStance();
+  heldStance=currentStance();
   if(collectFinalUpper){
     for(const bone of collectFinalUpper) bone.node.quaternion.copy(bone.q);
     collectFinalUpper=null;
@@ -454,24 +473,9 @@ function reviewCollect(msg){
 }
 function undoStance(){
   if(!vrm||!stanceApplied) return;
-  const data=currentStance();
-  const human=vrm.humanoid;
-  const leftLeg=human.getNormalizedBoneNode('leftUpperLeg');
-  const rightLeg=human.getNormalizedBoneNode('rightUpperLeg');
-  if(leftLeg&&rightLeg){
-    adductUpperLegs(leftLeg.quaternion, rightLeg.quaternion, -THREE.MathUtils.degToRad(data.leg_adduct_deg));
-  }
-  const leftArm=human.getNormalizedBoneNode('leftUpperArm');
-  const rightArm=human.getNormalizedBoneNode('rightUpperArm');
-  if(leftArm&&rightArm){
-    abductUpperArms(leftArm.quaternion, rightArm.quaternion, -THREE.MathUtils.degToRad(data.arm_abduct_deg));
-  }
-  const leftFoot=human.getNormalizedBoneNode('leftFoot');
-  const rightFoot=human.getNormalizedBoneNode('rightFoot');
-  if(leftFoot&&rightFoot){
-    pointFeetForward(leftFoot.quaternion, rightFoot.quaternion, -THREE.MathUtils.degToRad(data.toe_forward_deg));
-  }
+  poseStance(stanceNode, currentStance(), -1);
   stanceApplied=false;
+  fingerBaked=0;
 }
 let exitBlend=null;
 function ease01(t){
@@ -910,6 +914,7 @@ function animate(){
       captureSettledIdle();
     }else if(['settled','collect_preparing'].includes(owner.mode) && groundedIdle){
       groundedIdle.update(delta);
+      nudgeHeldHandsAndAnkles();
       const readyId=`${owner.moveId}:${owner.settleSeq}`;
       if(owner.mode==='settled' && groundedIdle.ready && idleReadySent!==readyId && socket?.readyState===WebSocket.OPEN){
         socket.send(JSON.stringify({type:'upper_idle_ready',move_id:owner.moveId,settle_seq:owner.settleSeq}));

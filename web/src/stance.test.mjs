@@ -1,6 +1,17 @@
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
-import {abductUpperArms, adductUpperLegs, clampLegAdductDeg, pointFeetForward, stanceData} from './stance.js';
+import {
+  abductUpperArms,
+  adductUpperLegs,
+  clampLegAdductDeg,
+  curlFinger,
+  FINGER_JOINTS,
+  pointFeetForward,
+  poseFingers,
+  poseStance,
+  stanceData,
+  rollAnkles,
+} from './stance.js';
 
 const spread = new THREE.Vector3(0.07, -0.76, 0.05);
 const left = new THREE.Quaternion();
@@ -27,12 +38,18 @@ assert.deepEqual(stanceData({legDeg: 8.24}), {
   leg_adduct_deg: 8.2,
   arm_abduct_deg: 0,
   toe_forward_deg: 0,
+  finger_curl_deg: 0,
+  ankle_roll_deg: 0,
 });
-assert.deepEqual(stanceData({legDeg: 99, armDeg: -3, toeDeg: 50}), {
+assert.deepEqual(stanceData({legDeg: 99, armDeg: -3, toeDeg: 50, fingerDeg: 80, ankleDeg: -40}), {
   leg_adduct_deg: 24,
   arm_abduct_deg: 0,
   toe_forward_deg: 40,
+  finger_curl_deg: 45,
+  ankle_roll_deg: -15,
 });
+assert.equal(stanceData({fingerDeg: 12.24, ankleDeg: 8.26}).finger_curl_deg, 12.2);
+assert.equal(stanceData({fingerDeg: 12.24, ankleDeg: 8.26}).ankle_roll_deg, 8.3);
 
 const hanging = new THREE.Vector3(0.02, -0.55, 0.08);
 const leftArm = new THREE.Quaternion();
@@ -52,3 +69,50 @@ const rightToe = new THREE.Vector3(0, 0, 1).applyQuaternion(rightToeOut);
 assert.ok(Math.abs(leftToe.x) < 0.02, 'left toes face forward');
 assert.ok(Math.abs(rightToe.x) < 0.02, 'right toes face forward');
 assert.ok(leftToe.z > 0.9 && rightToe.z > 0.9, 'toes keep pointing ahead');
+
+const deg = THREE.MathUtils.degToRad;
+const leftCurl = new THREE.Quaternion();
+const rightCurl = new THREE.Quaternion();
+curlFinger(leftCurl, 'left', deg(30));
+curlFinger(rightCurl, 'right', deg(30));
+const leftTip = new THREE.Vector3(1, 0, 0).applyQuaternion(leftCurl);
+const rightTip = new THREE.Vector3(-1, 0, 0).applyQuaternion(rightCurl);
+assert.ok(leftTip.y < -0.4 && leftTip.x > 0.8, 'left fingers curl toward the palm');
+assert.ok(rightTip.y < -0.4 && rightTip.x < -0.8, 'right fingers curl toward the palm');
+assert.ok(Math.abs(leftTip.z) < 0.02 && Math.abs(rightTip.z) < 0.02, 'curl stays in the palm plane');
+
+const leftRoll = new THREE.Quaternion();
+const rightRoll = new THREE.Quaternion();
+rollAnkles(leftRoll, rightRoll, deg(20));
+const leftSole = new THREE.Vector3(0, -1, 0).applyQuaternion(leftRoll);
+const rightSole = new THREE.Vector3(0, -1, 0).applyQuaternion(rightRoll);
+const leftHeading = new THREE.Vector3(0, 0, 1).applyQuaternion(leftRoll);
+const rightHeading = new THREE.Vector3(0, 0, 1).applyQuaternion(rightRoll);
+assert.ok(leftSole.x > 0.3, 'left sole tilts outward');
+assert.ok(rightSole.x < -0.3, 'right sole tilts outward');
+assert.ok(Math.abs(leftHeading.x) < 1e-6 && Math.abs(rightHeading.x) < 1e-6, 'roll leaves the toe heading');
+assert.ok(leftHeading.z > 0.99 && rightHeading.z > 0.99, 'toes keep pointing ahead');
+
+const limbNames = ['leftUpperLeg', 'rightUpperLeg', 'leftUpperArm', 'rightUpperArm', 'leftFoot', 'rightFoot'];
+const nodes = {};
+for (const name of limbNames) {
+  nodes[name] = {quaternion: new THREE.Quaternion().setFromEuler(new THREE.Euler(0.2, -0.1, 0.05))};
+}
+for (const [leftName, rightName] of FINGER_JOINTS) {
+  nodes[leftName] = {quaternion: new THREE.Quaternion()};
+  nodes[rightName] = {quaternion: new THREE.Quaternion()};
+}
+const originals = Object.fromEntries(limbNames.map((name) => [name, nodes[name].quaternion.clone()]));
+const posed = stanceData({legDeg: 8, armDeg: 6, toeDeg: 10, fingerDeg: 20, ankleDeg: -6});
+const getNode = (name) => nodes[name];
+poseStance(getNode, posed, 1);
+assert.ok(nodes.leftIndexProximal.quaternion.angleTo(new THREE.Quaternion()) > 0.05, 'finger curl leaves the rest pose');
+const curled = nodes.leftIndexProximal.quaternion.clone();
+poseFingers(getNode, 20, {replaceUnmapped: true});
+assert.ok(nodes.leftIndexProximal.quaternion.angleTo(curled) < 1e-5, 'repeating the curl does not stack');
+assert.ok(nodes.leftFoot.quaternion.angleTo(originals.leftFoot) > 0.05, 'ankle roll reaches the foot');
+poseStance(getNode, posed, -1);
+for (const name of limbNames) {
+  assert.ok(nodes[name].quaternion.angleTo(originals[name]) < 1e-5, `${name} returns after undo`);
+}
+assert.ok(nodes.leftIndexProximal.quaternion.angleTo(new THREE.Quaternion()) < 1e-5, 'finger curl undo returns to rest');
