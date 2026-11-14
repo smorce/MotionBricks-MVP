@@ -33,6 +33,19 @@ test('walking still receives the stance slider exactly once per live frame', () 
   assert.equal(markerColor(false), 0xff4d4d);
 });
 
+test('collect_preparing or collecting transitions to moving with blend enabled', () => {
+  const settled = reduceOwner(emptyOwner(), {phase: 'settled', bothPlanted: true, moveId: 1, settleSeq: 1});
+  const preparing = reduceOwner({...settled, capture: false}, {phase: 'collect_preparing', moveId: 1, settleSeq: 1});
+  const fromPreparing = reduceOwner(preparing, {phase: 'moving', moveId: 2, settleSeq: 1});
+  assert.equal(fromPreparing.mode, 'live');
+  assert.equal(fromPreparing.blend, true);
+
+  const collecting = reduceOwner(preparing, {phase: 'collecting', moveId: 1, settleSeq: 1});
+  const fromCollecting = reduceOwner(collecting, {phase: 'moving', moveId: 2, settleSeq: 1});
+  assert.equal(fromCollecting.mode, 'live');
+  assert.equal(fromCollecting.blend, true);
+});
+
 test('runtime foot positions round-trip through the same root correction', () => {
   const rest = {x: 0.1, y: -0.2, z: 0.9};
   const spawn = {x: 1, z: 3};

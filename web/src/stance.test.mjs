@@ -15,6 +15,7 @@ import {
   lowerToes,
   straightenUpperBody,
   rollAnkles,
+  nudgeFrozenStance,
 } from './stance.js';
 
 const spread = new THREE.Vector3(0.07, -0.76, 0.05);
@@ -185,3 +186,49 @@ assert.ok(toeAfter < toeBefore - 0.005, 'toes drop toward the ground');
 lowerToes((name) => name === 'leftFoot' ? ankle : null, -1);
 ankle.updateMatrixWorld(true);
 assert.ok(Math.abs(toeBone.getWorldPosition(new THREE.Vector3()).y - toeBefore) < 1e-4, 'undo restores the toe height');
+
+const limbNamesForNudge = ['leftUpperLeg', 'rightUpperLeg', 'leftUpperArm', 'rightUpperArm', 'leftFoot', 'rightFoot'];
+function limbNodes() {
+  const nodes = {};
+  for (const name of limbNamesForNudge) {
+    nodes[name] = {quaternion: new THREE.Quaternion().setFromEuler(new THREE.Euler(0.15, -0.2, 0.08))};
+  }
+  return nodes;
+}
+function copyLimbs(from, to) {
+  for (const name of limbNamesForNudge) to[name].quaternion.copy(from[name].quaternion);
+}
+const heldStance = stanceData({legDeg: 11, armDeg: 8, toeDeg: 12.5, ankleDeg: 12});
+const nextStance = stanceData({legDeg: 8, armDeg: 5.5, toeDeg: 9, ankleDeg: -3});
+const frozenNodes = limbNodes();
+const baseNodes = limbNodes();
+copyLimbs(frozenNodes, baseNodes);
+poseStance((name) => frozenNodes[name], heldStance, 1);
+const snapshot = limbNodes();
+copyLimbs(frozenNodes, snapshot);
+nudgeFrozenStance((name) => frozenNodes[name], heldStance, nextStance);
+poseStance((name) => baseNodes[name], nextStance, 1);
+for (const name of limbNamesForNudge) {
+  assert.ok(
+    frozenNodes[name].quaternion.angleTo(baseNodes[name].quaternion) < 1e-5,
+    `${name} follows the standing slider`,
+  );
+}
+const nudged = limbNodes();
+copyLimbs(frozenNodes, nudged);
+copyLimbs(snapshot, frozenNodes);
+nudgeFrozenStance((name) => frozenNodes[name], heldStance, nextStance);
+for (const name of limbNamesForNudge) {
+  assert.ok(
+    frozenNodes[name].quaternion.angleTo(nudged[name].quaternion) < 1e-6,
+    `${name} slider does not stack across frames`,
+  );
+}
+copyLimbs(snapshot, frozenNodes);
+nudgeFrozenStance((name) => frozenNodes[name], heldStance, heldStance);
+for (const name of limbNamesForNudge) {
+  assert.ok(
+    frozenNodes[name].quaternion.angleTo(snapshot[name].quaternion) < 1e-6,
+    `${name} stays when the slider matches the snapshot`,
+  );
+}

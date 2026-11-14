@@ -24,13 +24,21 @@ export class GroundedIdle {
   constructor(vrm, { idleClip = null, fadeSeconds = 0.8, upperBlendMax = 0.65 } = {}) {
     this.vrm = vrm;
     this.elapsed = 0;
+    this.frozen = false;
     this.fadeSeconds = Math.max(1e-3, Number(fadeSeconds) || 0.8);
     this.upperBlendMax = Math.max(0, Math.min(1, Number(upperBlendMax) || 0));
     this.rootPosition = vrm.scene.position.clone();
     this.rootQuaternion = vrm.scene.quaternion.clone();
     this.bones = NAMES.map((name) => {
       const node = vrm.humanoid.getNormalizedBoneNode(name);
-      return node && { name, node, q: node.quaternion.clone(), p: node.position.clone() };
+      return node && {
+        name,
+        node,
+        q: node.quaternion.clone(),
+        p: node.position.clone(),
+        displayedQ: node.quaternion.clone(),
+        displayedP: node.position.clone(),
+      };
     }).filter(Boolean);
     this.locked = this.bones.filter((b) => LOCKED.includes(b.name));
     this.upper = this.bones.filter((b) => UPPER.includes(b.name));
@@ -47,10 +55,34 @@ export class GroundedIdle {
     }
   }
 
+  captureDisplayed() {
+    for (const bone of this.bones) {
+      bone.displayedQ.copy(bone.node.quaternion);
+      bone.displayedP.copy(bone.node.position);
+    }
+  }
+
+  freeze() {
+    this.frozen = true;
+  }
+
+  unfreeze() {
+    this.frozen = false;
+  }
+
   update(dt) {
-    this.elapsed += Math.max(0, Math.min(0.1, Number(dt) || 0));
     this.vrm.scene.position.copy(this.rootPosition);
     this.vrm.scene.quaternion.copy(this.rootQuaternion);
+
+    if (this.frozen) {
+      for (const bone of this.bones) {
+        bone.node.quaternion.copy(bone.displayedQ);
+        bone.node.position.copy(bone.displayedP);
+      }
+      return;
+    }
+
+    this.elapsed += Math.max(0, Math.min(0.1, Number(dt) || 0));
 
     for (const bone of this.locked) {
       bone.node.quaternion.copy(bone.q);
@@ -73,6 +105,7 @@ export class GroundedIdle {
     for (const bone of this.upper) {
       if (bone.name === 'spine' || bone.name === 'chest') bone.node.quaternion.multiply(q);
     }
+    this.captureDisplayed();
   }
 
   get ready() { return this.elapsed >= this.fadeSeconds; }
@@ -88,12 +121,12 @@ export class GroundedIdle {
     }
   }
 
-  // Starting a new walk: interpolate joint rotations only. Live root keeps moving.
+  // Starting a new walk: interpolate from the last displayed stance so there is no snap.
   blendToLive(weight) {
     const t = ease(weight);
     for (const bone of this.bones) {
-      bone.node.quaternion.slerpQuaternions(bone.q, bone.node.quaternion.clone(), t);
-      if (bone.name === 'hips') bone.node.position.lerpVectors(bone.p, bone.node.position.clone(), t);
+      bone.node.quaternion.slerpQuaternions(bone.displayedQ, bone.node.quaternion.clone(), t);
+      if (bone.name === 'hips') bone.node.position.lerpVectors(bone.displayedP, bone.node.position.clone(), t);
     }
   }
 }

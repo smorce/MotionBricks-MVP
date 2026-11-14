@@ -7,7 +7,7 @@ import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {VRMLoaderPlugin, VRMUtils} from '@pixiv/three-vrm';
 import {threePointToRuntime} from './coords.js';
-import {lowerToes, poseAnkles, poseFingers, poseStance, stanceData, stanceFromSaved, straightenUpperBody} from './stance.js';
+import {lowerToes, nudgeFrozenStance, poseFingers, poseStance, stanceData, stanceFromSaved, straightenUpperBody} from './stance.js';
 import {IdleHandoff} from './idleHandoff.js';
 import {GroundedIdle} from './groundedIdle.js';
 import {emptyOwner, reduceOwner, shouldApplyStance} from './poseOwner.js';
@@ -16,6 +16,13 @@ import {GaitDebug} from './gaitDebug.js';
 import {formatGaitStatus} from './gaitView.js';
 import {formatVisualStop} from './visualStopView.js';
 import {compareFootHeights} from './footHeightDiagnostics.js';
+import {
+  applyMarkerOverrides,
+  formatMarkerOverridesJson,
+  formatMarkerReadout,
+  markerOverrides,
+  moveUsecaseMarker,
+} from './usecaseMarkerEdit.js';
 import idleMotionUrl from '../../motions/idle.vrma?url';
 import idleBreakMotionUrl from '../../motions/idle_06.vrma?url';
 import {buildKit} from '../../ModernRestaurantCafekit/kit.mjs';
@@ -132,11 +139,11 @@ function adjustStance(){
   fingerBaked=currentStance().finger_curl_deg
   stanceApplied=true
 }
-// 停止中は足が保存姿勢へ戻る。足首は毎フレーム差分を重ね、指は変化した分だけ足す。
-function nudgeHeldHandsAndAnkles(){
+// 停止中は保存姿勢へ毎フレーム戻る。足・手・つま先・足首は保存値との差分を重ね、指は変化した分だけ足す。
+function nudgeHeldStance(){
   if(!vrm||!heldStance) return
   const next=currentStance()
-  poseAnkles(stanceNode, next.ankle_roll_deg-heldStance.ankle_roll_deg)
+  nudgeFrozenStance(stanceNode, heldStance, next)
   const fingerDelta=next.finger_curl_deg-fingerBaked
   if(fingerDelta) poseFingers(stanceNode, fingerDelta)
   fingerBaked=next.finger_curl_deg
@@ -279,11 +286,27 @@ let idleBreakClip=null;
 let handoff=null;
 let handoffClip='';
 let motionToken=0;
+const MARKER_KEY='roze.markerPositions';
 const usecasePicks=[];
+const usecaseMarkers=[];
 const markerCases=cafeUsecases.filter((item)=>item.marker!==false && Number.isFinite(item.x) && Number.isFinite(item.z));
+const originalMarkerPositions=markerOverrides(markerCases);
+try{
+  const raw=localStorage.getItem(MARKER_KEY);
+  if(raw) applyMarkerOverrides(markerCases, JSON.parse(raw));
+}catch{ /* private mode */ }
+try{
+  const fixed=markerOverrides(
+    cafeUsecases.filter((item)=>item.marker!==false && Number.isFinite(item.x) && Number.isFinite(item.z)),
+  );
+  const saved=JSON.parse(localStorage.getItem(MARKER_KEY)||'null');
+  if(saved && JSON.stringify(saved)===JSON.stringify(fixed)) localStorage.removeItem(MARKER_KEY);
+}catch{ /* private mode */ }
 const openFloor=cafeUsecases.find((item)=>item.id==='open-floor') ?? {
   id:'open-floor', title:'空いた床', intent:'カフェの空いた床に着いた。自然に立つ。', hints:['自然に立つ'], marker:false,
 };
+let markerEditOn=false;
+let markerDrag=null;
 
 let restSourceWorld=[];
 let restDestWorld=new Map();
@@ -649,11 +672,20 @@ function makeUsecaseLabel(text){
   sprite.renderOrder=2;
   return sprite;
 }
+function placeMarkerGroup(entry){
+  entry.group.position.set(entry.usecase.x, FLOOR_TOP, entry.usecase.z);
+}
+function rememberMarkers(){
+  try{ localStorage.setItem(MARKER_KEY, JSON.stringify(markerOverrides(markerCases))); }catch{ /* private mode */ }
+}
+function renderMarkerReadout(usecase){
+  const el=document.querySelector('#markerReadout');
+  if(el) el.textContent=formatMarkerReadout(usecase);
+}
 function addUsecaseMarkers(){
   const ringMat=new THREE.MeshBasicMaterial({color:0xe0a96d, side:THREE.DoubleSide});
   for(const usecase of markerCases){
     const group=new THREE.Group();
-    group.position.set(usecase.x, FLOOR_TOP, usecase.z);
     const ring=new THREE.Mesh(new THREE.RingGeometry(0.28, 0.4, 40), ringMat);
     ring.rotation.x=-Math.PI/2;
     ring.position.y=0.03;
@@ -665,9 +697,94 @@ function addUsecaseMarkers(){
     pick.userData.usecase=usecase;
     group.add(ring, pick, makeUsecaseLabel(usecase.title));
     scene.add(group);
+    const entry={usecase, group, pick, ring};
+    placeMarkerGroup(entry);
+    usecaseMarkers.push(entry);
     usecasePicks.push(pick);
   }
 }
+function setPointerFromEvent(e){
+  const rect=renderer.domElement.getBoundingClientRect();
+  pointer.set(((e.clientX-rect.left)/rect.width)*2-1,-((e.clientY-rect.top)/rect.height)*2+1);
+  raycaster.setFromCamera(pointer,camera);
+}
+function beginMarkerDrag(entry, e){
+  markerDrag={entry, pointerId:e.pointerId};
+  controls.enabled=false;
+  try{ renderer.domElement.setPointerCapture(e.pointerId); }catch{ /* unsupported */ }
+  renderer.domElement.style.cursor='grabbing';
+  renderMarkerReadout(entry.usecase);
+}
+function updateMarkerDrag(e){
+  if(!markerDrag) return;
+  setPointerFromEvent(e);
+  const hit=raycaster.intersectObject(clickFloor)[0];
+  if(!hit) return;
+  moveUsecaseMarker(markerDrag.entry.usecase, hit.point.x, hit.point.z);
+  placeMarkerGroup(markerDrag.entry);
+  renderMarkerReadout(markerDrag.entry.usecase);
+}
+function endMarkerDrag(){
+  if(!markerDrag) return;
+  rememberMarkers();
+  markerDrag=null;
+  controls.enabled=true;
+  renderer.domElement.style.cursor=markerEditOn?'grab':'';
+}
+function setMarkerEdit(on){
+  markerEditOn=Boolean(on);
+  if(!markerEditOn) endMarkerDrag();
+  // 編集中は左ドラッグをリング移動に使うため、カメラ回転を止める。
+  controls.enableRotate=!markerEditOn;
+  const button=document.querySelector('#markerEdit');
+  if(button) button.textContent=markerEditOn?'リング位置調整を終了':'リング位置を調整';
+  document.querySelector('#markerEditPanel')?.classList.toggle('on', markerEditOn);
+  renderer.domElement.style.cursor=markerEditOn?'grab':'';
+  renderMarkerReadout(null);
+}
+window.motionBricksMarkers={
+  editing:()=>markerEditOn,
+  setEditing:setMarkerEdit,
+  positions:()=>markerOverrides(markerCases),
+  focus(id){
+    const entry=usecaseMarkers.find((item)=>item.usecase.id===id);
+    if(!entry) return false;
+    controls.target.set(entry.usecase.x, lookHeight, entry.usecase.z);
+    camera.position.set(entry.usecase.x+camOffset.x, camOffset.y, entry.usecase.z+camOffset.z);
+    controls.update();
+    return true;
+  },
+  project(id){
+    const entry=usecaseMarkers.find((item)=>item.usecase.id===id);
+    if(!entry) return null;
+    const point=entry.group.position.clone();
+    point.y+=0.05;
+    point.project(camera);
+    const rect=renderer.domElement.getBoundingClientRect();
+    return {
+      x:rect.left+((point.x+1)/2)*rect.width,
+      y:rect.top+((-point.y+1)/2)*rect.height,
+      world:{x:entry.usecase.x, z:entry.usecase.z},
+    };
+  },
+  pickAt(clientX, clientY){
+    const rect=renderer.domElement.getBoundingClientRect();
+    pointer.set(((clientX-rect.left)/rect.width)*2-1,-((clientY-rect.top)/rect.height)*2+1);
+    raycaster.setFromCamera(pointer,camera);
+    const floorHit=raycaster.intersectObject(clickFloor)[0];
+    if(!floorHit) return null;
+    let best=null;
+    let bestDistance=0.55;
+    for(const entry of usecaseMarkers){
+      const distance=Math.hypot(entry.usecase.x-floorHit.point.x, entry.usecase.z-floorHit.point.z);
+      if(distance<=bestDistance){
+        best=entry;
+        bestDistance=distance;
+      }
+    }
+    return best?.usecase.id ?? null;
+  },
+};
 function nearestUsecase(x, z){
   let best=null;
   let bestDistance=USECASE_SNAP_M;
@@ -717,6 +834,7 @@ buildUsecaseList();
 let newestStreamMove=null;
 let appliedSequence=-1;
 function beginMoveSource(){
+  groundedIdle?.freeze();
   playbackBuffer.beginMove(newestStreamMove??0);
   lastPose=currentPose=lastFrame.poses;
   poseStamp=performance.now();
@@ -801,7 +919,7 @@ function connect(){
       }[msg.phase]||msg.phase;
       currentMotionState=`動作: ${phase} / 公式: ${msg.official_state} / 速度 ${Number(msg.actual_speed_mps).toFixed(2)}m/s`;
     }
-    if(msg.type==='error'){lastError=msg.message}
+    if(msg.type==='error'){lastError=msg.message;groundedIdle?.unfreeze();}
   };
   socket.onclose=()=>{
     status.textContent='サーバー未接続。バックエンドを起動してください。';
@@ -816,6 +934,26 @@ function setGaitDebug(on){
   if(button) button.textContent=on?'歩行デバッグを隠す':'歩行デバッグを表示';
 }
 document.querySelector('#gaitDebug')?.addEventListener('click', ()=>setGaitDebug(!gaitDebugOn));
+document.querySelector('#markerEdit')?.addEventListener('click', ()=>setMarkerEdit(!markerEditOn));
+document.querySelector('#markerCopy')?.addEventListener('click', async ()=>{
+  const button=document.querySelector('#markerCopy');
+  const text=formatMarkerOverridesJson(markerCases);
+  try{
+    await navigator.clipboard.writeText(text);
+    if(button){
+      button.textContent='コピーしました';
+      setTimeout(()=>{ button.textContent='座標をコピー'; }, 1200);
+    }
+  }catch{
+    if(button) button.textContent='Copy failed';
+  }
+});
+document.querySelector('#markerReset')?.addEventListener('click', ()=>{
+  applyMarkerOverrides(markerCases, originalMarkerPositions);
+  for(const entry of usecaseMarkers) placeMarkerGroup(entry);
+  try{ localStorage.removeItem(MARKER_KEY); }catch{ /* private mode */ }
+  renderMarkerReadout(null);
+});
 document.querySelector('#gaitLog')?.addEventListener('click', async ()=>{
   const button=document.querySelector('#gaitLog');
   try{
@@ -838,15 +976,48 @@ window.addEventListener('keydown', (event)=>{
   const tag=document.activeElement?.tagName;
   if(tag==='INPUT' || tag==='TEXTAREA') return;
   if(event.key==='d' || event.key==='D') setGaitDebug(!gaitDebugOn);
+  if(event.key==='m' || event.key==='M') setMarkerEdit(!markerEditOn);
 });
 let pointerDownAt=null;
 renderer.domElement.addEventListener('wheel', ()=>{ markInput(); }, {passive:true});
 renderer.domElement.addEventListener('pointerdown',e=>{
   markInput();
   if(e.button!==0)return;
+  if(markerEditOn){
+    setPointerFromEvent(e);
+    const hit=raycaster.intersectObject(clickFloor)[0];
+    if(hit){
+      let best=null;
+      let bestDistance=0.55;
+      for(const entry of usecaseMarkers){
+        const distance=Math.hypot(entry.usecase.x-hit.point.x, entry.usecase.z-hit.point.z);
+        if(distance<=bestDistance){
+          best=entry;
+          bestDistance=distance;
+        }
+      }
+      if(best){
+        e.preventDefault();
+        e.stopPropagation();
+        beginMarkerDrag(best, e);
+        pointerDownAt=null;
+        return;
+      }
+    }
+    pointerDownAt=null;
+    return;
+  }
   pointerDownAt={x:e.clientX,y:e.clientY};
 });
+renderer.domElement.addEventListener('pointermove',e=>{
+  if(markerDrag) updateMarkerDrag(e);
+});
 renderer.domElement.addEventListener('pointerup',e=>{
+  if(markerDrag){
+    if(e.pointerId===markerDrag.pointerId) endMarkerDrag();
+    pointerDownAt=null;
+    return;
+  }
   if(e.button!==0||!pointerDownAt||!socket||socket.readyState!==WebSocket.OPEN||!spawn||!sceneReady){
     pointerDownAt=null;
     return;
@@ -856,9 +1027,7 @@ renderer.domElement.addEventListener('pointerup',e=>{
   pointerDownAt=null;
   // ドラッグ開始と誤判定しないよう、短いクリックのみ移動指示にする。
   if(dx*dx+dy*dy>36)return;
-  const rect=renderer.domElement.getBoundingClientRect();
-  pointer.set(((e.clientX-rect.left)/rect.width)*2-1,-((e.clientY-rect.top)/rect.height)*2+1);
-  raycaster.setFromCamera(pointer,camera);
+  setPointerFromEvent(e);
   const picked=raycaster.intersectObjects(usecasePicks, false)[0];
   if(picked){
     const usecase=picked.object.userData.usecase;
@@ -873,6 +1042,10 @@ renderer.domElement.addEventListener('pointerup',e=>{
     return;
   }
   sendArrival(openFloor, hit.point.x, hit.point.z);
+});
+renderer.domElement.addEventListener('pointercancel',e=>{
+  if(markerDrag && e.pointerId===markerDrag.pointerId) endMarkerDrag();
+  pointerDownAt=null;
 });
 window.addEventListener('resize',()=>{
   camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);
@@ -908,7 +1081,10 @@ function animate(){
       captureSettledIdle();
     }else if(['settled','collect_preparing'].includes(owner.mode) && groundedIdle){
       groundedIdle.update(delta);
-      nudgeHeldHandsAndAnkles();
+      if(!groundedIdle.frozen){
+        nudgeHeldStance();
+        groundedIdle.captureDisplayed();
+      }
       const readyId=`${owner.moveId}:${owner.settleSeq}`;
       if(owner.mode==='settled' && groundedIdle.ready && idleReadySent!==readyId && socket?.readyState===WebSocket.OPEN){
         socket.send(JSON.stringify({type:'upper_idle_ready',move_id:owner.moveId,settle_seq:owner.settleSeq}));
@@ -918,6 +1094,7 @@ function animate(){
       if(pose) applyPose(pose);
       adjustStance();
       groundedIdle?.blendUpperToLive((performance.now()-collectBlendStarted)/300);
+      groundedIdle?.captureDisplayed();
     }else{
       if(owner.blend && groundedIdle){
         idleExit={pose:groundedIdle, startedAt:performance.now()};

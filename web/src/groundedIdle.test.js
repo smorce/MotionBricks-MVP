@@ -105,3 +105,34 @@ test('収束補間は腰とルートを変更せず表示中の上半身から�
   assert.equal(vrm.scene.position.x,5);
   assert.equal(vrm.nodes.hips.position.y,2);
 });
+
+test('歩行再開のblendToLiveはidleClipで変化した直前の表示姿勢から始まる',()=>{
+  const vrm=avatar();
+  const clip=idleClipToward(vrm.nodes, {spineX:0, chestX:0});
+  const idle=new GroundedIdle(vrm, {idleClip:clip, fadeSeconds:0.8, upperBlendMax:0.65});
+  const initialSpine=vrm.nodes.spine.quaternion.clone();
+  for(let i=0;i<60;i++) idle.update(1/60);
+  const displayedSpine=vrm.nodes.spine.quaternion.clone();
+  assert.ok(displayedSpine.angleTo(initialSpine)>0.05);
+  vrm.nodes.spine.rotation.x=0.9;
+  idle.blendToLive(0);
+  assert.ok(vrm.nodes.spine.quaternion.angleTo(displayedSpine)<1e-6);
+});
+
+test('freeze中はクリック直後の表示姿勢を保持しblendToLiveへ引き継ぐ',()=>{
+  const vrm=avatar();
+  const clip=idleClipToward(vrm.nodes, {spineX:0, chestX:0});
+  const idle=new GroundedIdle(vrm, {idleClip:clip, fadeSeconds:0.8, upperBlendMax:0.65});
+  idle.update(0.2);
+  vrm.nodes.leftUpperLeg.rotation.z+=0.05;
+  idle.captureDisplayed();
+  const frozenSpine=vrm.nodes.spine.quaternion.clone();
+  const frozenLeg=vrm.nodes.leftUpperLeg.quaternion.clone();
+  idle.freeze();
+  idle.update(0.5);
+  assert.ok(vrm.nodes.spine.quaternion.angleTo(frozenSpine)<1e-6);
+  assert.ok(vrm.nodes.leftUpperLeg.quaternion.angleTo(frozenLeg)<1e-6);
+  vrm.nodes.spine.rotation.x=0.8;
+  idle.blendToLive(0);
+  assert.ok(vrm.nodes.spine.quaternion.angleTo(frozenSpine)<1e-6);
+});

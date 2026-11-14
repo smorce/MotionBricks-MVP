@@ -210,3 +210,26 @@ export function poseStance(getNode, data, sign = 1) {
   ];
   for (const step of sign < 0 ? [...steps].reverse() : steps) step();
 }
+
+/**
+ * 停止中は保存姿勢へ毎フレーム戻る。
+ * 足の閉じと手の横幅は同じ軸の差分を足す。
+ * つま先と足裏は軸が違うので、保存分を外してから今の角度を掛け直す。
+ */
+export function nudgeFrozenStance(getNode, held, next) {
+  const turn = (deg) => rad(deg);
+  const pair = (leftName, rightName, fn, deg) => {
+    if (!deg) return;
+    const left = getNode(leftName);
+    const right = getNode(rightName);
+    if (left && right) fn(left.quaternion, right.quaternion, turn(deg));
+  };
+  pair('leftUpperLeg', 'rightUpperLeg', adductUpperLegs, next.leg_adduct_deg - held.leg_adduct_deg);
+  pair('leftUpperArm', 'rightUpperArm', abductUpperArms, next.arm_abduct_deg - held.arm_abduct_deg);
+  if (next.toe_forward_deg !== held.toe_forward_deg || next.ankle_roll_deg !== held.ankle_roll_deg) {
+    pair('leftFoot', 'rightFoot', rollAnkles, -held.ankle_roll_deg);
+    pair('leftFoot', 'rightFoot', pointFeetForward, -held.toe_forward_deg);
+    pair('leftFoot', 'rightFoot', pointFeetForward, next.toe_forward_deg);
+    pair('leftFoot', 'rightFoot', rollAnkles, next.ankle_roll_deg);
+  }
+}

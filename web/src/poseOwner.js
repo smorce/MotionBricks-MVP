@@ -33,7 +33,7 @@ export function reduceOwner(owner, frame) {
       seenMove: moveId ?? owner.seenMove,
     };
   }
-  if (owner.mode === 'settled') {
+  if (['settled', 'collect_preparing', 'collecting'].includes(owner.mode)) {
     return {mode: 'live', moveId, settleSeq, capture: false, blend: true, seenMove: moveId ?? owner.seenMove};
   }
   return {
